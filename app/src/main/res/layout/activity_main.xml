@@ -1,0 +1,158 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:rsb="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/mainlayout"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fadeScrollbars="false"
+    android:layout_weight="1"
+    android:fillViewport="true">
+
+    <RelativeLayout
+
+
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content">
+
+        <VideoView
+            android:id="@+id/videoView"
+            android:layout_width="match_parent"
+            android:layout_height="200dp"
+            android:layout_centerHorizontal="true"
+            android:layout_marginLeft="20dp"
+            android:layout_marginRight="20dp"
+            android:layout_marginTop="5dp" />
+
+
+        <com.jaygoo.widget.RangeSeekBar
+            android:id="@+id/rangeSeekBar"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_below="@+id/videoView"
+            android:layout_marginTop="5dp"
+            app:lineColorSelected="#ED1C24"
+            app:thumbSize="20dp"
+            app:seekBarHeight="10dp"
+            app:cellMode="number"
+            app:seekBarMode="range"/>
+
+        <TextView
+            android:id="@+id/tvLeft"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_alignLeft="@+id/rangeSeekBar"
+            android:layout_alignStart="@+id/rangeSeekBar"
+            android:layout_below="@+id/rangeSeekBar"
+            android:textColor="#000000" />
+
+        <TextView
+            android:id="@+id/tvRight"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_alignEnd="@+id/rangeSeekBar"
+            android:layout_alignRight="@+id/rangeSeekBar"
+            android:layout_below="@+id/rangeSeekBar"
+            android:textColor="#000000" />
+
+        <TextView
+            android:id="@+id/tvInstructions"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_below="@+id/tvRight"
+            android:layout_centerHorizontal="true"
+            android:layout_margin="5dp"
+            android:gravity="center"
+            android:text=" "
+            android:textColor="#000000" />
+
+        <TextView
+            android:id="@+id/uploadVideo"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_below="@+id/tvInstructions"
+            android:layout_centerHorizontal="true"
+            android:layout_marginTop="5dp"
+            android:background="@drawable/upload_video_selector"
+            android:gravity="center"
+            android:padding="5dp"
+            android:text="select video"
+            android:textColor="#FFFFFF"
+            android:textSize="16sp" />
+
+        <TableLayout
+            android:id="@+id/footer"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_alignParentBottom="true"
+            android:layout_below="@+id/uploadVideo"
+            android:layout_marginTop="5dp"
+            android:gravity="center_horizontal|bottom"
+            android:orientation="horizontal">
+
+            <TableRow>
+                <TextView
+                    android:id="@+id/cropVideo"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_weight="1"
+                    android:background="@drawable/crop_video_selector"
+                    android:gravity="center"
+                    android:padding="10dp"
+                    android:text="cut"
+                    android:textColor="#FFFFFF"
+                    android:textSize="16sp" />
+                <TextView
+                        android:id="@+id/scaleVideo"
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
+                        android:layout_weight="1"
+                        android:background="@drawable/scale_video_selector"
+                        android:gravity="center"
+                        android:padding="10dp"
+                        android:text="scale"
+                        android:textColor="#FFFFFF"
+                        android:textSize="16sp" />
+
+            </TableRow>
+
+            <TableRow>
+                <TextView
+                    android:id="@+id/increaseSpeed"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_weight="1"
+                    android:background="@drawable/increase_speed_selector"
+                    android:gravity="center"
+                    android:padding="10dp"
+                    android:text="increase"
+                    android:textColor="#FFFFFF"
+                    android:textSize="16sp" />
+                <TextView
+                    android:id="@+id/decreaseSpeed"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_weight="1"
+                    android:background="@drawable/slow_video_selector"
+                    android:gravity="center"
+                    android:padding="2dp"
+                    android:text="decrease"
+                    android:textColor="#FFFFFF"
+                    android:textSize="16sp" />
+                <TextView
+                    android:id="@+id/reverseVideo"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_weight="1"
+                    android:background="@drawable/reverse_video_selector"
+                    android:gravity="center"
+                    android:padding="2dp"
+                    android:text="reverse"
+                    android:textColor="#FFFFFF"
+                    android:textSize="16sp" />
+            </TableRow>
+        </TableLayout>
+
+
+    </RelativeLayout>
+</ScrollView>
