@@ -303,8 +303,7 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void run() {
                 try {
-                    VideoProcessor.processVideo(getApplicationContext(),selectVideoPath, filePath,
-                            null, null, startMs, endMs, null, null);
+                    VideoProcessor.cutVideo(getApplicationContext(),selectVideoPath, filePath, startMs, endMs);
                     Intent intent = new Intent(MainActivity.this, PreviewActivity.class);
                     intent.putExtra(FILEPATH, filePath);
                     startActivity(intent);
@@ -346,7 +345,7 @@ public class MainActivity extends AppCompatActivity {
                     int outWidth= originWidth/2;
                     int outHeight = originHeight/2;
                     VideoProcessor.processVideo(getApplicationContext(),selectVideoPath, filePath,
-                            outWidth, outHeight, startMs, endMs, null, bitrate/2);
+                            outWidth, outHeight, startMs, endMs, null, bitrate/2,null);
                     Intent intent = new Intent(MainActivity.this, PreviewActivity.class);
                     intent.putExtra(FILEPATH, filePath);
                     startActivity(intent);
@@ -380,7 +379,7 @@ public class MainActivity extends AppCompatActivity {
             public void run() {
                 try {
                     VideoProcessor.processVideo(getApplicationContext(),selectVideoPath, filePath,
-                            null, null, startMs, endMs, speed, null);
+                            null, null, startMs, endMs, speed, null,null);
                     Intent intent = new Intent(MainActivity.this, PreviewActivity.class);
                     intent.putExtra(FILEPATH, filePath);
                     startActivity(intent);
@@ -414,11 +413,7 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void run() {
                 try {
-                    File tempFile = new File(getApplicationContext().getCacheDir(), System.currentTimeMillis() + "+.temp");
-                    VideoProcessor.processVideo(getApplicationContext(),selectVideoPath, tempFile.getAbsolutePath(),
-                            null, null, startMs, endMs, null, null);
-                    VideoProcessor.revertVideoNoDecode(tempFile.getAbsolutePath(), filePath);
-                    tempFile.delete();
+                    VideoProcessor.revertVideoWithDecode(getApplicationContext(),selectVideoPath, filePath);
                     Intent intent = new Intent(MainActivity.this, PreviewActivity.class);
                     intent.putExtra(FILEPATH, filePath);
                     startActivity(intent);

@@ -37,7 +37,37 @@ public class VideoProcessor {
     /**
      * 只有关键帧距为0的才能方便做逆序
      */
-    public final static int DEFAULT_I_FRAME_INTERVAL = 0;
+    public final static int DEFAULT_I_FRAME_INTERVAL = 1;
+
+    public static void scaleVideo(Context context, String input, String output,
+                                  int outWidth, int outHeight) throws IOException {
+       processVideo(context,input,output,outWidth,outHeight,null,null,null,null,null);
+    }
+
+    public static void cutVideo(Context context, String input, String output, int startTimeMs, int endTimeMs) throws IOException {
+        processVideo(context,input,output,null,null,startTimeMs,endTimeMs,null,null,null);
+
+    }
+
+    public static void changeVideoSpeed(Context context, String input, String output, float speed) throws IOException {
+        processVideo(context,input,output,null,null,null,null,speed,null,null);
+
+    }
+    /**
+     * 对视频先处理成所有帧都是关键帧，再逆序,用于关键帧距不为0的情况
+     */
+    public static void  revertVideoWithDecode(Context context, String input, String output) throws IOException {
+        File tempFile = new File(context.getCacheDir(), System.currentTimeMillis() + ".temp");
+        try {
+            MediaMetadataRetriever retriever = new MediaMetadataRetriever();
+            retriever.setDataSource(input);
+            int oriBitrate = Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_BITRATE));
+            processVideo(context, input, tempFile.getAbsolutePath(), null, null, null, null, null, oriBitrate*10,0);
+            revertVideoNoDecode(tempFile.getAbsolutePath(), output);
+        } finally {
+            tempFile.delete();
+        }
+    }
 
     /**
      * 支持裁剪缩放快慢放
@@ -46,7 +76,8 @@ public class VideoProcessor {
     public static void processVideo(Context context, String input, String output,
                                     @Nullable Integer outWidth, @Nullable Integer outHeight,
                                     @Nullable Integer startTimeMs, @Nullable Integer endTimeMs,
-                                    @Nullable Float speed, @Nullable Integer bitrate) throws IOException {
+                                    @Nullable Float speed, @Nullable Integer bitrate,
+                                    @Nullable Integer iFrameInterval) throws IOException {
 
         MediaMetadataRetriever retriever = new MediaMetadataRetriever();
         retriever.setDataSource(input);
@@ -54,6 +85,12 @@ public class VideoProcessor {
         int originHeight = Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT));
         int rotationValue = Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION));
         int oriBitrate = Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_BITRATE));
+        if (bitrate == null) {
+            bitrate = oriBitrate;
+        }
+        if (iFrameInterval == null) {
+            iFrameInterval = DEFAULT_I_FRAME_INTERVAL;
+        }
 
         int resultWidth = outWidth == null ? originWidth : outWidth;
         int resultHeight = outHeight == null ? originHeight : outHeight;
@@ -94,9 +131,9 @@ public class VideoProcessor {
         //初始化编码器
         MediaFormat outputFormat = MediaFormat.createVideoFormat(MIME_TYPE, resultWidth, resultHeight);
         outputFormat.setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface);
-        outputFormat.setInteger(MediaFormat.KEY_BIT_RATE, bitrate == null ? oriBitrate : bitrate);
+        outputFormat.setInteger(MediaFormat.KEY_BIT_RATE, bitrate);
         outputFormat.setInteger(MediaFormat.KEY_FRAME_RATE, DEFAULT_FRAME_RATE);
-        outputFormat.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, DEFAULT_I_FRAME_INTERVAL);
+        outputFormat.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, iFrameInterval);
 
         encoder = MediaCodec.createEncoderByType(MIME_TYPE);
         encoder.configure(outputFormat, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE);
@@ -440,7 +477,7 @@ public class VideoProcessor {
         encoder.start();
         boolean encodeInputDone = false;
         long lastAudioFrameTimeUs = -1;
-        final int AAC_FRAME_TIME_US = 1024* 1000 * 1000 / (sampleRate*channelCount);
+        final int AAC_FRAME_TIME_US = 1024 * 1000 * 1000 / (sampleRate * channelCount);
         while (!encodeDone) {
             int inputBufferIndex = encoder.dequeueInputBuffer(TIMEOUT_US);
             if (!encodeInputDone && inputBufferIndex >= 0) {
@@ -456,7 +493,7 @@ public class VideoProcessor {
                     inputBuffer.clear();
                     inputBuffer.put(buffer);
                     inputBuffer.position(0);
-                    CL.it(TAG, "audio queuePcmBuffer " + sampleTime / 1000+" size:"+size);
+                    CL.it(TAG, "audio queuePcmBuffer " + sampleTime / 1000 + " size:" + size);
                     encoder.queueInputBuffer(inputBufferIndex, 0, size, sampleTime, flags);
                     pcmExtrator.advance();
                 }
@@ -478,12 +515,12 @@ public class VideoProcessor {
                         break;
                     }
                     ByteBuffer encodeOutputBuffer = encoder.getOutputBuffer(outputBufferIndex);
-                    CL.it(TAG, "audio writeSampleData " + info.presentationTimeUs+" size:"+info.size+" flags:"+info.flags);
-                    if(info.presentationTimeUs < lastAudioFrameTimeUs + AAC_FRAME_TIME_US){
+                    CL.it(TAG, "audio writeSampleData " + info.presentationTimeUs + " size:" + info.size + " flags:" + info.flags);
+                    if (info.presentationTimeUs < lastAudioFrameTimeUs + AAC_FRAME_TIME_US) {
                         //某些情况下帧时间会出错，怀疑是SoundTouch加速操作之后出的问题
-                        CL.et(TAG,"audio 时间戳错误，丢弃,lastAudioFrameTimeUs:"+lastAudioFrameTimeUs+" " +
-                                "info.presentationTimeUs:"+info.presentationTimeUs);
-                    }else {
+                        CL.et(TAG, "audio 时间戳错误，丢弃,lastAudioFrameTimeUs:" + lastAudioFrameTimeUs + " " +
+                                "info.presentationTimeUs:" + info.presentationTimeUs);
+                    } else {
                         lastAudioFrameTimeUs = info.presentationTimeUs;
                         mediaMuxer.writeSampleData(muxerAudioTrackIndex, encodeOutputBuffer, info);
                     }
@@ -496,19 +533,6 @@ public class VideoProcessor {
         wavFile.delete();
         outFile.delete();
         Log.e("PCM", "result:" + res + " size:" + outFile.length());
-    }
-
-    /**
-     * 对视频先处理成所有帧都是关键帧，再逆序,用于关键帧距不为0的情况
-     */
-    public static void revertVideoWithDecode(Context context, String input, String output) throws IOException {
-        File tempFile = new File(context.getCacheDir(), System.currentTimeMillis() + ".temp");
-        try {
-            processVideo(context, input, tempFile.getAbsolutePath(), null, null, null, null, null, null);
-            revertVideoNoDecode(tempFile.getAbsolutePath(), output);
-        } finally {
-            tempFile.delete();
-        }
     }
 
     /**
