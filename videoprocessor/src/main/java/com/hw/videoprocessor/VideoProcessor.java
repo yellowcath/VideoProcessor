@@ -92,8 +92,8 @@ public class VideoProcessor {
                 processVideo(context, input, tempFile.getAbsolutePath(), null, null, null, null, null, oriBitrate * bitrateMultiple, 0);
                 revertVideoNoDecode(tempFile.getAbsolutePath(), temp2File.getAbsolutePath());
                 int oriIFrameInterval = (int) (keyFrameCount / (duration / 1000f));
-                oriIFrameInterval = oriIFrameInterval==0?1:oriIFrameInterval;
-                processVideo(context, temp2File.getAbsolutePath(), output, null, null, null, null, null, oriBitrate,oriIFrameInterval);
+                oriIFrameInterval = oriIFrameInterval == 0 ? 1 : oriIFrameInterval;
+                processVideo(context, temp2File.getAbsolutePath(), output, null, null, null, null, null, oriBitrate, oriIFrameInterval);
             }
         } finally {
             tempFile.delete();
@@ -415,7 +415,7 @@ public class VideoProcessor {
         boolean encodeDone = false;
         boolean decodeInputDone = false;
         final int TIMEOUT_US = 2500;
-        File pcmFile = new File(context.getCacheDir(), System.currentTimeMillis() + ".pcm");
+        File pcmFile = new File("/mnt/sdcard/test.pcm");//new File(context.getCacheDir(), System.currentTimeMillis() + ".pcm");
         FileChannel writeChannel = new FileOutputStream(pcmFile).getChannel();
         while (!decodeDone) {
             if (!decodeInputDone) {
@@ -474,11 +474,18 @@ public class VideoProcessor {
         writeChannel.close();
 
         int sampleRate = oriAudioFormat.getInteger(MediaFormat.KEY_SAMPLE_RATE);
-        File wavFile = new File(context.getCacheDir(), pcmFile.getName() + ".wav");
-        new PcmToWavUtil(sampleRate, AudioFormat.CHANNEL_IN_STEREO, AudioFormat.ENCODING_PCM_16BIT).pcmToWav(pcmFile.getAbsolutePath(), wavFile.getAbsolutePath());
+        int oriChannelCount = oriAudioFormat.getInteger(MediaFormat.KEY_CHANNEL_COUNT);
+        File wavFile = new File("/mnt/sdcard/test.wav");//new File(context.getCacheDir(), pcmFile.getName() + ".wav");
+
+        int channelConfig = AudioFormat.CHANNEL_IN_MONO;
+        if (oriChannelCount == 2) {
+            channelConfig = AudioFormat.CHANNEL_IN_STEREO;
+        }
+        new PcmToWavUtil(sampleRate, channelConfig, AudioFormat.ENCODING_PCM_16BIT).pcmToWav(pcmFile.getAbsolutePath(), wavFile.getAbsolutePath());
+//        new PcmToWavUtil(sampleRate, channelConfig, AudioFormat.ENCODING_PCM_16BIT).pcmToWav(pcmFile.getAbsolutePath(), wavFile.getAbsolutePath());
         //开始处理pcm
         CL.i(TAG, "start process pcm speed");
-        File outFile = new File(context.getCacheDir(), pcmFile.getName() + ".outpcm");
+        File outFile = new File("/mnt/sdcard/test.outpcm");//new File(context.getCacheDir(), pcmFile.getName() + ".outpcm");
         SoundTouch st = new SoundTouch();
         st.setTempo(speed);
 
@@ -486,7 +493,7 @@ public class VideoProcessor {
         if (res < 0) {
             pcmFile.delete();
             wavFile.delete();
-            outFile.delete();
+//            outFile.delete();
             //处理失败
             return;
         }
@@ -495,7 +502,12 @@ public class VideoProcessor {
         pcmExtrator.setDataSource(outFile.getAbsolutePath());
         audioTrack = selectTrack(pcmExtrator, true);
         pcmExtrator.selectTrack(audioTrack);
-        maxBufferSize = pcmExtrator.getTrackFormat(audioTrack).getInteger(MediaFormat.KEY_MAX_INPUT_SIZE);
+        MediaFormat pcmTrackFormat = pcmExtrator.getTrackFormat(audioTrack);
+        if (pcmTrackFormat.containsKey(MediaFormat.KEY_MAX_INPUT_SIZE)) {
+            maxBufferSize = pcmTrackFormat.getInteger(MediaFormat.KEY_MAX_INPUT_SIZE);
+        } else {
+            maxBufferSize = 100 * 1000;
+        }
         buffer = ByteBuffer.allocateDirect(maxBufferSize);
 
         int bitrate = oriAudioFormat.getInteger(MediaFormat.KEY_BIT_RATE);
@@ -509,7 +521,8 @@ public class VideoProcessor {
         encoder.start();
         boolean encodeInputDone = false;
         long lastAudioFrameTimeUs = -1;
-        final int AAC_FRAME_TIME_US = 1024 * 1000 * 1000 / (sampleRate * channelCount);
+        final int AAC_FRAME_TIME_US = 1024 * 1000 * 1000 / sampleRate;
+        boolean detectTimeError = false;
         while (!encodeDone) {
             int inputBufferIndex = encoder.dequeueInputBuffer(TIMEOUT_US);
             if (!encodeInputDone && inputBufferIndex >= 0) {
@@ -548,22 +561,27 @@ public class VideoProcessor {
                     }
                     ByteBuffer encodeOutputBuffer = encoder.getOutputBuffer(outputBufferIndex);
                     CL.it(TAG, "audio writeSampleData " + info.presentationTimeUs + " size:" + info.size + " flags:" + info.flags);
-                    if (info.presentationTimeUs < lastAudioFrameTimeUs + AAC_FRAME_TIME_US) {
-                        //某些情况下帧时间会出错，怀疑是SoundTouch加速操作之后出的问题
-                        CL.et(TAG, "audio 时间戳错误，丢弃,lastAudioFrameTimeUs:" + lastAudioFrameTimeUs + " " +
+                    if (!detectTimeError && lastAudioFrameTimeUs != -1 && info.presentationTimeUs < lastAudioFrameTimeUs + AAC_FRAME_TIME_US) {
+                        //某些情况下帧时间会出错，目前未找到原因（系统相机录得双声道视频正常，我录的单声道视频不正常）
+                        CL.et(TAG, "audio 时间戳错误，lastAudioFrameTimeUs:" + lastAudioFrameTimeUs + " " +
                                 "info.presentationTimeUs:" + info.presentationTimeUs);
-                    } else {
-                        lastAudioFrameTimeUs = info.presentationTimeUs;
-                        mediaMuxer.writeSampleData(muxerAudioTrackIndex, encodeOutputBuffer, info);
+                        detectTimeError = true;
                     }
+                    if(detectTimeError){
+                        info.presentationTimeUs = lastAudioFrameTimeUs + AAC_FRAME_TIME_US;
+                        CL.et(TAG, "audio 时间戳错误，使用修正的时间戳:"+info.presentationTimeUs);
+                    }
+                    lastAudioFrameTimeUs = info.presentationTimeUs;
+                    mediaMuxer.writeSampleData(muxerAudioTrackIndex, encodeOutputBuffer, info);
+
                     encodeOutputBuffer.clear();
                     encoder.releaseOutputBuffer(outputBufferIndex, false);
                 }
             }
         }
-        pcmFile.delete();
-        wavFile.delete();
-        outFile.delete();
+//        pcmFile.delete();
+//        wavFile.delete();
+//        outFile.delete();
         Log.e("PCM", "result:" + res + " size:" + outFile.length());
     }
 
