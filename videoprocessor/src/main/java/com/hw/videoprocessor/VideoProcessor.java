@@ -286,6 +286,9 @@ public class VideoProcessor {
                                         Integer startTimeUs, Integer endTimeUs) throws IOException {
         int audioTrack = selectTrack(extractor, true);
         extractor.selectTrack(audioTrack);
+        if (startTimeUs == null) {
+            startTimeUs = 0;
+        }
         extractor.seekTo(startTimeUs, MediaExtractor.SEEK_TO_CLOSEST_SYNC);
         MediaFormat audioFormat = extractor.getTrackFormat(audioTrack);
         int maxBufferSize = audioFormat.getInteger(MediaFormat.KEY_MAX_INPUT_SIZE);
@@ -294,11 +297,14 @@ public class VideoProcessor {
 
         while (true) {
             long sampleTimeUs = extractor.getSampleTime();
+            if (sampleTimeUs == -1) {
+                break;
+            }
             if (sampleTimeUs < startTimeUs) {
                 extractor.advance();
                 continue;
             }
-            if (sampleTimeUs > endTimeUs) {
+            if (endTimeUs != null && sampleTimeUs > endTimeUs) {
                 break;
             }
             info.presentationTimeUs = sampleTimeUs - startTimeUs;
@@ -321,6 +327,9 @@ public class VideoProcessor {
                                         @NonNull Float speed) throws Exception {
         int audioTrack = selectTrack(extractor, true);
         extractor.selectTrack(audioTrack);
+        if (startTimeUs == null) {
+            startTimeUs = 0;
+        }
         extractor.seekTo(startTimeUs, MediaExtractor.SEEK_TO_CLOSEST_SYNC);
         MediaFormat oriAudioFormat = extractor.getTrackFormat(audioTrack);
         int maxBufferSize = oriAudioFormat.getInteger(MediaFormat.KEY_MAX_INPUT_SIZE);
@@ -341,31 +350,33 @@ public class VideoProcessor {
         FileChannel writeChannel = new FileOutputStream(pcmFile).getChannel();
         while (!decodeDone) {
             if (!decodeInputDone) {
+                boolean eof = false;
                 int decodeInputIndex = decoder.dequeueInputBuffer(TIMEOUT_US);
                 if (decodeInputIndex >= 0) {
                     long sampleTimeUs = extractor.getSampleTime();
-                    if (sampleTimeUs < startTimeUs) {
+                    if (sampleTimeUs == -1) {
+                        eof = true;
+                    } else if (sampleTimeUs < startTimeUs) {
                         extractor.advance();
                         continue;
-                    } else if (sampleTimeUs > endTimeUs) {
+                    } else if (endTimeUs != null && sampleTimeUs > endTimeUs) {
+                        eof = true;
+                    }
+
+                    if (eof) {
                         decodeInputDone = true;
                         decoder.queueInputBuffer(decodeInputIndex, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM);
-                        continue;
+                    } else {
+                        info.size = extractor.readSampleData(buffer, 0);
+                        info.presentationTimeUs = sampleTimeUs;
+                        info.flags = extractor.getSampleFlags();
+                        ByteBuffer inputBuffer = decoder.getInputBuffer(decodeInputIndex);
+                        inputBuffer.put(buffer);
+                        CL.it(TAG, "audio decode queueInputBuffer " + info.presentationTimeUs / 1000);
+                        decoder.queueInputBuffer(decodeInputIndex, 0, info.size, info.presentationTimeUs, info.flags);
+                        extractor.advance();
                     }
-                    info.presentationTimeUs = sampleTimeUs;//0 - startTimeUs;
-                    info.flags = extractor.getSampleFlags();
-                    buffer.clear();
-                    info.size = extractor.readSampleData(buffer, 0);
-                    if (info.size < 0) {
-                        decodeInputDone = true;
-                        decoder.queueInputBuffer(decodeInputIndex, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM);
-                        continue;
-                    }
-                    ByteBuffer inputBuffer = decoder.getInputBuffer(decodeInputIndex);
-                    inputBuffer.put(buffer);
-                    CL.it(TAG, "audio decode queueInputBuffer " + info.presentationTimeUs / 1000);
-                    decoder.queueInputBuffer(decodeInputIndex, 0, info.size, info.presentationTimeUs, info.flags);
-                    extractor.advance();
+
                 }
             }
 
