@@ -11,6 +11,7 @@ import android.media.MediaMetadataRetriever;
 import android.media.MediaMuxer;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
+import android.text.TextUtils;
 import android.util.Log;
 import android.view.Surface;
 import com.hw.videoprocessor.util.CL;
@@ -41,31 +42,62 @@ public class VideoProcessor {
 
     public static void scaleVideo(Context context, String input, String output,
                                   int outWidth, int outHeight) throws IOException {
-       processVideo(context,input,output,outWidth,outHeight,null,null,null,null,null);
+        processVideo(context, input, output, outWidth, outHeight, null, null, null, null, null);
     }
 
     public static void cutVideo(Context context, String input, String output, int startTimeMs, int endTimeMs) throws IOException {
-        processVideo(context,input,output,null,null,startTimeMs,endTimeMs,null,null,null);
+        processVideo(context, input, output, null, null, startTimeMs, endTimeMs, null, null, null);
 
     }
 
     public static void changeVideoSpeed(Context context, String input, String output, float speed) throws IOException {
-        processVideo(context,input,output,null,null,null,null,speed,null,null);
+        processVideo(context, input, output, null, null, null, null, speed, null, null);
 
     }
+
     /**
-     * 对视频先处理成所有帧都是关键帧，再逆序,用于关键帧距不为0的情况
+     * 对视频先检查，如果不是全关键帧，先处理成所有帧都是关键帧，再逆序
      */
-    public static void  revertVideoWithDecode(Context context, String input, String output) throws IOException {
+    public static void revertVideo(Context context, String input, String output) throws IOException {
         File tempFile = new File(context.getCacheDir(), System.currentTimeMillis() + ".temp");
+        File temp2File = new File(context.getCacheDir(), System.currentTimeMillis() + ".temp2");
         try {
-            MediaMetadataRetriever retriever = new MediaMetadataRetriever();
-            retriever.setDataSource(input);
-            int oriBitrate = Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_BITRATE));
-            processVideo(context, input, tempFile.getAbsolutePath(), null, null, null, null, null, oriBitrate*10,0);
-            revertVideoNoDecode(tempFile.getAbsolutePath(), output);
+            MediaExtractor extractor = new MediaExtractor();
+            extractor.setDataSource(input);
+            int trackIndex = selectTrack(extractor, false);
+            extractor.selectTrack(trackIndex);
+            int keyFrameCount = 0;
+            int frameCount = 0;
+            while (true) {
+                long sampleTime = extractor.getSampleTime();
+                if (sampleTime < 0) {
+                    break;
+                }
+                int flags = extractor.getSampleFlags();
+                if ((flags & MediaExtractor.SAMPLE_FLAG_SYNC) != 0) {
+                    keyFrameCount++;
+                }
+                frameCount++;
+                extractor.advance();
+            }
+            extractor.release();
+            if (frameCount == keyFrameCount) {
+                revertVideoNoDecode(input, output);
+            } else {
+                int bitrateMultiple = (frameCount - keyFrameCount) / keyFrameCount;
+                MediaMetadataRetriever retriever = new MediaMetadataRetriever();
+                retriever.setDataSource(input);
+                int oriBitrate = Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_BITRATE));
+                int duration = Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION));
+                processVideo(context, input, tempFile.getAbsolutePath(), null, null, null, null, null, oriBitrate * bitrateMultiple, 0);
+                revertVideoNoDecode(tempFile.getAbsolutePath(), temp2File.getAbsolutePath());
+                int oriIFrameInterval = (int) (keyFrameCount / (duration / 1000f));
+                oriIFrameInterval = oriIFrameInterval==0?1:oriIFrameInterval;
+                processVideo(context, temp2File.getAbsolutePath(), output, null, null, null, null, null, oriBitrate,oriIFrameInterval);
+            }
         } finally {
             tempFile.delete();
+            temp2File.delete();
         }
     }
 
@@ -627,5 +659,30 @@ public class VideoProcessor {
             }
         }
         return -5;
+    }
+
+    private static int getBitrateMultiple(String videoPath) throws IOException {
+        if (TextUtils.isEmpty(videoPath)) {
+            return 0;
+        }
+        MediaExtractor extractor = new MediaExtractor();
+        extractor.setDataSource(videoPath);
+        int trackIndex = selectTrack(extractor, false);
+        extractor.selectTrack(trackIndex);
+        int keyFrameCount = 0;
+        int frameCount = 0;
+        while (true) {
+            long sampleTime = extractor.getSampleTime();
+            if (sampleTime < 0) {
+                break;
+            }
+            int flags = extractor.getSampleFlags();
+            if ((flags & MediaExtractor.SAMPLE_FLAG_SYNC) != 0) {
+                keyFrameCount++;
+            }
+            frameCount++;
+        }
+        extractor.release();
+        return (frameCount - keyFrameCount) / keyFrameCount;
     }
 }

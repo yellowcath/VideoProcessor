@@ -413,7 +413,7 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void run() {
                 try {
-                    VideoProcessor.revertVideoWithDecode(getApplicationContext(),selectVideoPath, filePath);
+                    VideoProcessor.revertVideo(getApplicationContext(),selectVideoPath, filePath);
                     Intent intent = new Intent(MainActivity.this, PreviewActivity.class);
                     intent.putExtra(FILEPATH, filePath);
                     startActivity(intent);
