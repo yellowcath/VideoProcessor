@@ -270,7 +270,7 @@ public class VideoProcessor {
                 writeAudioTrack(extractor, mediaMuxer, muxerAudioTrackIndex, startTimeUs, endTimeUs);
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            CL.e(e);
         } finally {
             mediaMuxer.release();
             encoder.release();
@@ -438,6 +438,8 @@ public class VideoProcessor {
         encoder.configure(encodeFormat, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE);
         encoder.start();
         boolean encodeInputDone = false;
+        long lastAudioFrameTimeUs = -1;
+        final int AAC_FRAME_TIME_US = 1024* 1000 * 1000 / (sampleRate*channelCount);
         while (!encodeDone) {
             int inputBufferIndex = encoder.dequeueInputBuffer(TIMEOUT_US);
             if (!encodeInputDone && inputBufferIndex >= 0) {
@@ -453,6 +455,7 @@ public class VideoProcessor {
                     inputBuffer.clear();
                     inputBuffer.put(buffer);
                     inputBuffer.position(0);
+                    CL.it(TAG, "audio queuePcmBuffer " + sampleTime / 1000+" size:"+size);
                     encoder.queueInputBuffer(inputBufferIndex, 0, size, sampleTime, flags);
                     pcmExtrator.advance();
                 }
@@ -474,8 +477,15 @@ public class VideoProcessor {
                         break;
                     }
                     ByteBuffer encodeOutputBuffer = encoder.getOutputBuffer(outputBufferIndex);
-                    CL.it(TAG, "audio writeSampleData " + info.presentationTimeUs / 1000);
-                    mediaMuxer.writeSampleData(muxerAudioTrackIndex, encodeOutputBuffer, info);
+                    CL.it(TAG, "audio writeSampleData " + info.presentationTimeUs+" size:"+info.size+" flags:"+info.flags);
+                    if(info.presentationTimeUs < lastAudioFrameTimeUs + AAC_FRAME_TIME_US){
+                        //某些情况下帧时间会出错，怀疑是SoundTouch加速操作之后出的问题
+                        CL.et(TAG,"audio 时间戳错误，丢弃,lastAudioFrameTimeUs:"+lastAudioFrameTimeUs+" " +
+                                "info.presentationTimeUs:"+info.presentationTimeUs);
+                    }else {
+                        lastAudioFrameTimeUs = info.presentationTimeUs;
+                        mediaMuxer.writeSampleData(muxerAudioTrackIndex, encodeOutputBuffer, info);
+                    }
                     encodeOutputBuffer.clear();
                     encoder.releaseOutputBuffer(outputBufferIndex, false);
                 }
