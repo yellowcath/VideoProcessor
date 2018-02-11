@@ -411,7 +411,8 @@ public class VideoProcessor {
         CL.i(TAG, "start process pcm speed");
         File outFile = new File(context.getCacheDir(), pcmFile.getName() + ".outpcm");
         SoundTouch st = new SoundTouch();
-        st.setSpeed(speed);
+        st.setTempo(speed);
+
         int res = st.processFile(wavFile.getAbsolutePath(), outFile.getAbsolutePath());
         if (res < 0) {
             pcmFile.delete();
