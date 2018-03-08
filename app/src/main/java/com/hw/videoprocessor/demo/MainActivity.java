@@ -6,28 +6,33 @@ import android.content.ContentUris;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.content.res.AssetFileDescriptor;
 import android.database.Cursor;
 import android.media.MediaMetadataRetriever;
 import android.media.MediaPlayer;
 import android.net.Uri;
 import android.os.Build;
+import android.os.Bundle;
 import android.os.Environment;
 import android.os.Handler;
 import android.provider.DocumentsContract;
 import android.provider.MediaStore;
 import android.support.v4.app.ActivityCompat;
 import android.support.v7.app.AppCompatActivity;
-import android.os.Bundle;
 import android.view.View;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 import android.widget.VideoView;
-import com.jaygoo.widget.RangeSeekBar;
 import com.hw.videoprocessor.VideoProcessor;
 import com.hw.videoprocessor.util.CL;
+import com.jaygoo.widget.RangeSeekBar;
 
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.nio.channels.FileChannel;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -59,6 +64,7 @@ public class MainActivity extends AppCompatActivity {
         final TextView uploadVideo = (TextView) findViewById(R.id.uploadVideo);
         TextView cutVideo = (TextView) findViewById(R.id.cropVideo);
         TextView scaleVideo = (TextView) findViewById(R.id.scaleVideo);
+        TextView mixAudio = (TextView) findViewById(R.id.mixAudio);
         TextView increaseSpeed = (TextView) findViewById(R.id.increaseSpeed);
         TextView decreaseSpeed = (TextView) findViewById(R.id.decreaseSpeed);
         final TextView reverseVideo = (TextView) findViewById(R.id.reverseVideo);
@@ -103,6 +109,17 @@ public class MainActivity extends AppCompatActivity {
             public void onClick(View v) {
                 if (selectedVideoUri != null) {
                     executeScaleVideo((int) (rangeSeekBar.getCurrentRange()[0] * 1000), (int) (rangeSeekBar.getCurrentRange()[1] * 1000));
+                } else {
+                    Toast.makeText(getApplicationContext(), "Please upload a video", Toast.LENGTH_SHORT).show();
+                }
+            }
+        });
+
+        mixAudio.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                if (selectedVideoUri != null) {
+                    executeMixAudio((int) (rangeSeekBar.getCurrentRange()[0] * 1000), (int) (rangeSeekBar.getCurrentRange()[1] * 1000));
                 } else {
                     Toast.makeText(getApplicationContext(), "Please upload a video", Toast.LENGTH_SHORT).show();
                 }
@@ -303,7 +320,7 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void run() {
                 try {
-                    VideoProcessor.cutVideo(getApplicationContext(),selectVideoPath, filePath, startMs, endMs);
+                    VideoProcessor.cutVideo(getApplicationContext(), selectVideoPath, filePath, startMs, endMs);
                     Intent intent = new Intent(MainActivity.this, PreviewActivity.class);
                     intent.putExtra(FILEPATH, filePath);
                     startActivity(intent);
@@ -313,6 +330,7 @@ public class MainActivity extends AppCompatActivity {
             }
         }).start();
     }
+
     private void executeScaleVideo(final int startMs, final int endMs) {
         File moviesDir = Environment.getExternalStoragePublicDirectory(
                 Environment.DIRECTORY_MOVIES
@@ -342,10 +360,10 @@ public class MainActivity extends AppCompatActivity {
                     int originHeight = Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT));
                     int bitrate = Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_BITRATE));
 
-                    int outWidth= originWidth/2;
-                    int outHeight = originHeight/2;
-                    VideoProcessor.processVideo(getApplicationContext(),selectVideoPath, filePath,
-                            outWidth, outHeight, startMs, endMs, null, bitrate/2,null);
+                    int outWidth = originWidth / 2;
+                    int outHeight = originHeight / 2;
+                    VideoProcessor.processVideo(getApplicationContext(), selectVideoPath, filePath,
+                            outWidth, outHeight, startMs, endMs, null, bitrate / 2, null);
                     Intent intent = new Intent(MainActivity.this, PreviewActivity.class);
                     intent.putExtra(FILEPATH, filePath);
                     startActivity(intent);
@@ -355,6 +373,41 @@ public class MainActivity extends AppCompatActivity {
             }
         }).start();
     }
+
+    private void executeMixAudio(final int startMs, final int endMs) {
+        File moviesDir = Environment.getExternalStoragePublicDirectory(
+                Environment.DIRECTORY_MOVIES
+        );
+
+        String filePrefix = "scale_video";
+        String fileExtn = ".mp4";
+        final String selectVideoPath = getPath(MainActivity.this, selectedVideoUri);
+        File dest = new File(moviesDir, filePrefix + fileExtn);
+        int fileNo = 0;
+        while (dest.exists()) {
+            fileNo++;
+            dest = new File(moviesDir, filePrefix + fileNo + fileExtn);
+        }
+        filePath = dest.getAbsolutePath();
+
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    final String aacPath = new File(getCacheDir(), "test.aac").getAbsolutePath();
+                    copyAssets("test.aac", aacPath);
+                    VideoProcessor.mixAudioTrack(getApplicationContext(),selectVideoPath, aacPath, filePath, startMs, endMs,0,70);
+                    Intent intent = new Intent(MainActivity.this, PreviewActivity.class);
+                    intent.putExtra(FILEPATH, filePath);
+                    startActivity(intent);
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            }
+        }).start();
+    }
+
+
     private void executeSpeedVideo(final int startMs, final int endMs, final float speed) {
         File moviesDir = Environment.getExternalStoragePublicDirectory(
                 Environment.DIRECTORY_MOVIES
@@ -378,8 +431,8 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void run() {
                 try {
-                    VideoProcessor.processVideo(getApplicationContext(),selectVideoPath, filePath,
-                            null, null, startMs, endMs, speed, null,null);
+                    VideoProcessor.processVideo(getApplicationContext(), selectVideoPath, filePath,
+                            null, null, startMs, endMs, speed, null, null);
                     Intent intent = new Intent(MainActivity.this, PreviewActivity.class);
                     intent.putExtra(FILEPATH, filePath);
                     startActivity(intent);
@@ -413,7 +466,7 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void run() {
                 try {
-                    VideoProcessor.revertVideo(getApplicationContext(),selectVideoPath, filePath);
+                    VideoProcessor.revertVideo(getApplicationContext(), selectVideoPath, filePath);
                     Intent intent = new Intent(MainActivity.this, PreviewActivity.class);
                     intent.putExtra(FILEPATH, filePath);
                     startActivity(intent);
@@ -541,5 +594,13 @@ public class MainActivity extends AppCompatActivity {
      */
     private boolean isMediaDocument(Uri uri) {
         return "com.android.providers.media.documents".equals(uri.getAuthority());
+    }
+
+    private void copyAssets(String assetsName, String path) throws IOException {
+        AssetFileDescriptor assetFileDescriptor = getAssets().openFd(assetsName);
+        FileChannel from = new FileInputStream(assetFileDescriptor.getFileDescriptor()).getChannel();
+        FileChannel to = new FileOutputStream(path).getChannel();
+        from.transferTo(assetFileDescriptor.getStartOffset(), assetFileDescriptor.getLength(), to);
+
     }
 }

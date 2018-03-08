@@ -113,7 +113,17 @@
                         android:text="scale"
                         android:textColor="#FFFFFF"
                         android:textSize="16sp" />
-
+                <TextView
+                    android:id="@+id/mixAudio"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_weight="1"
+                    android:background="@drawable/mix_video_selector"
+                    android:gravity="center"
+                    android:padding="10dp"
+                    android:text="mixAudio"
+                    android:textColor="#FFFFFF"
+                    android:textSize="16sp" />
             </TableRow>
 
             <TableRow>
