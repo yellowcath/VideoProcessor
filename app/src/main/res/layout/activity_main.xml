@@ -1,20 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
-    xmlns:rsb="http://schemas.android.com/apk/res-auto"
-    android:id="@+id/mainlayout"
-    android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:fadeScrollbars="false"
-    android:layout_weight="1"
-    android:fillViewport="true">
-
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+              xmlns:app="http://schemas.android.com/apk/res-auto"
+              xmlns:rsb="http://schemas.android.com/apk/res-auto"
+              android:id="@+id/mainlayout"
+              android:layout_width="match_parent"
+              android:layout_height="match_parent"
+              android:orientation="vertical">
+    <android.support.v7.widget.Toolbar
+        android:id="@+id/activity_main_toolbar"
+        android:layout_height="wrap_content"
+        android:layout_width="match_parent"
+        android:minHeight="?attr/actionBarSize"
+        android:background="?attr/colorPrimary">
+    </android.support.v7.widget.Toolbar>
     <RelativeLayout
-
-
         android:layout_width="match_parent"
         android:layout_height="wrap_content">
-
         <VideoView
             android:id="@+id/videoView"
             android:layout_width="match_parent"
@@ -35,7 +36,7 @@
             app:thumbSize="20dp"
             app:seekBarHeight="10dp"
             app:cellMode="number"
-            app:seekBarMode="range"/>
+            app:seekBarMode="range" />
 
         <TextView
             android:id="@+id/tvLeft"
@@ -103,16 +104,16 @@
                     android:textColor="#FFFFFF"
                     android:textSize="16sp" />
                 <TextView
-                        android:id="@+id/scaleVideo"
-                        android:layout_width="0dp"
-                        android:layout_height="match_parent"
-                        android:layout_weight="1"
-                        android:background="@drawable/scale_video_selector"
-                        android:gravity="center"
-                        android:padding="10dp"
-                        android:text="scale"
-                        android:textColor="#FFFFFF"
-                        android:textSize="16sp" />
+                    android:id="@+id/scaleVideo"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_weight="1"
+                    android:background="@drawable/scale_video_selector"
+                    android:gravity="center"
+                    android:padding="10dp"
+                    android:text="scale"
+                    android:textColor="#FFFFFF"
+                    android:textSize="16sp" />
                 <TextView
                     android:id="@+id/mixAudio"
                     android:layout_width="0dp"
@@ -162,7 +163,5 @@
                     android:textSize="16sp" />
             </TableRow>
         </TableLayout>
-
-
     </RelativeLayout>
-</ScrollView>
+</LinearLayout>

@@ -12,7 +12,6 @@ import android.media.MediaMuxer;
 import android.support.annotation.IntRange;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
-import android.text.TextUtils;
 import android.view.Surface;
 import com.hw.videoprocessor.util.AudioUtil;
 import com.hw.videoprocessor.util.CL;
@@ -32,8 +31,8 @@ import java.nio.channels.FileChannel;
  */
 @TargetApi(21)
 public class VideoProcessor {
-    private final static String TAG = "VideoProcessor";
-    private final static String MIME_TYPE = "video/avc";
+    final static String TAG = "VideoProcessor";
+    final static String MIME_TYPE = "video/avc";
 
     public final static int DEFAULT_FRAME_RATE = 25;
     /**
@@ -56,6 +55,7 @@ public class VideoProcessor {
 
     }
 
+
     /**
      * 对视频先检查，如果不是全关键帧，先处理成所有帧都是关键帧，再逆序
      */
@@ -65,7 +65,7 @@ public class VideoProcessor {
         try {
             MediaExtractor extractor = new MediaExtractor();
             extractor.setDataSource(input);
-            int trackIndex = selectTrack(extractor, false);
+            int trackIndex = VideoUtil.selectTrack(extractor, false);
             extractor.selectTrack(trackIndex);
             int keyFrameCount = 0;
             int frameCount = 0;
@@ -136,8 +136,8 @@ public class VideoProcessor {
 
         MediaExtractor extractor = new MediaExtractor();
         extractor.setDataSource(input);
-        int videoIndex = selectTrack(extractor, false);
-        int audioIndex = selectTrack(extractor, true);
+        int videoIndex = VideoUtil.selectTrack(extractor, false);
+        int audioIndex = VideoUtil.selectTrack(extractor, true);
         MediaMuxer mediaMuxer = new MediaMuxer(output, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4);
         MediaFormat audioTrackFormat = extractor.getTrackFormat(audioIndex);
 
@@ -337,7 +337,7 @@ public class VideoProcessor {
             if (speed != null) {
                 writeAudioTrack(context, extractor, mediaMuxer, muxerAudioTrackIndex, startTimeUs, endTimeUs, speed);
             } else {
-                writeAudioTrack(extractor, mediaMuxer, muxerAudioTrackIndex, startTimeUs, endTimeUs);
+                VideoUtil.writeAudioTrack(extractor, mediaMuxer, muxerAudioTrackIndex, startTimeUs, endTimeUs);
             }
         } catch (Exception e) {
             CL.e(e);
@@ -350,59 +350,20 @@ public class VideoProcessor {
     }
 
     /**
-     * 不需要改变音频速率的情况下，直接读写就可
-     */
-    private static void writeAudioTrack(MediaExtractor extractor, MediaMuxer mediaMuxer, int muxerAudioTrackIndex,
-                                        Integer startTimeUs, Integer endTimeUs) throws IOException {
-        int audioTrack = selectTrack(extractor, true);
-        extractor.selectTrack(audioTrack);
-        if (startTimeUs == null) {
-            startTimeUs = 0;
-        }
-        extractor.seekTo(startTimeUs, MediaExtractor.SEEK_TO_CLOSEST_SYNC);
-        MediaFormat audioFormat = extractor.getTrackFormat(audioTrack);
-        int maxBufferSize = audioFormat.getInteger(MediaFormat.KEY_MAX_INPUT_SIZE);
-        ByteBuffer buffer = ByteBuffer.allocateDirect(maxBufferSize);
-        MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
-
-        while (true) {
-            long sampleTimeUs = extractor.getSampleTime();
-            if (sampleTimeUs == -1) {
-                break;
-            }
-            if (sampleTimeUs < startTimeUs) {
-                extractor.advance();
-                continue;
-            }
-            if (endTimeUs != null && sampleTimeUs > endTimeUs) {
-                break;
-            }
-            info.presentationTimeUs = sampleTimeUs - startTimeUs;
-            info.flags = extractor.getSampleFlags();
-            info.size = extractor.readSampleData(buffer, 0);
-            if (info.size < 0) {
-                break;
-            }
-            mediaMuxer.writeSampleData(muxerAudioTrackIndex, buffer, info);
-
-            extractor.advance();
-        }
-    }
-
-    /**
      * 需要改变音频速率的情况下，需要先解码->改变速率->编码
      */
     private static void writeAudioTrack(Context context, MediaExtractor extractor, MediaMuxer mediaMuxer, int muxerAudioTrackIndex,
                                         Integer startTimeUs, Integer endTimeUs,
                                         @NonNull Float speed) throws Exception {
-        int audioTrack = selectTrack(extractor, true);
+        int audioTrack = VideoUtil.selectTrack(extractor, true);
         extractor.selectTrack(audioTrack);
         if (startTimeUs == null) {
             startTimeUs = 0;
         }
         extractor.seekTo(startTimeUs, MediaExtractor.SEEK_TO_CLOSEST_SYNC);
         MediaFormat oriAudioFormat = extractor.getTrackFormat(audioTrack);
-        int maxBufferSize = oriAudioFormat.getInteger(MediaFormat.KEY_MAX_INPUT_SIZE);
+        int maxBufferSize = VideoUtil.getAudioMaxBufferSize(oriAudioFormat);
+
         ByteBuffer buffer = ByteBuffer.allocateDirect(maxBufferSize);
         MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
 
@@ -499,14 +460,10 @@ public class VideoProcessor {
         //重新将速率变化过后的pcm写入
         MediaExtractor pcmExtrator = new MediaExtractor();
         pcmExtrator.setDataSource(outFile.getAbsolutePath());
-        audioTrack = selectTrack(pcmExtrator, true);
+        audioTrack = VideoUtil.selectTrack(pcmExtrator, true);
         pcmExtrator.selectTrack(audioTrack);
         MediaFormat pcmTrackFormat = pcmExtrator.getTrackFormat(audioTrack);
-        if (pcmTrackFormat.containsKey(MediaFormat.KEY_MAX_INPUT_SIZE)) {
-            maxBufferSize = pcmTrackFormat.getInteger(MediaFormat.KEY_MAX_INPUT_SIZE);
-        } else {
-            maxBufferSize = 100 * 1000;
-        }
+        maxBufferSize = VideoUtil.getAudioMaxBufferSize(pcmTrackFormat);
         buffer = ByteBuffer.allocateDirect(maxBufferSize);
 
         int bitrate = oriAudioFormat.getInteger(MediaFormat.KEY_BIT_RATE);
@@ -594,8 +551,8 @@ public class VideoProcessor {
         MediaExtractor extractor = new MediaExtractor();
         extractor.setDataSource(input);
 
-        int videoTrackIndex = selectTrack(extractor, false);
-        int audioTrackIndex = selectTrack(extractor, true);
+        int videoTrackIndex = VideoUtil.selectTrack(extractor, false);
+        int audioTrackIndex = VideoUtil.selectTrack(extractor, true);
 
         final int MIN_FRAME_INTERVAL = 10 * 1000;
         MediaMuxer mediaMuxer = new MediaMuxer(output, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4);
@@ -661,8 +618,9 @@ public class VideoProcessor {
 
     /**
      * 不需要改变音频速率的情况下，直接读写就可
+     *
      * @param videoVolumn 0静音，50表示原音
-     * @param aacVolumn 0静音，50表示原音
+     * @param aacVolumn   0静音，50表示原音
      */
     public static void mixAudioTrack(Context context, String videoInput, String aacInput, String output,
                                      Integer startTimeMs, Integer endTimeMs,
@@ -685,21 +643,21 @@ public class VideoProcessor {
             duration = endTimeUs - startTimeUs;
         }
         decodeToPCM(videoInput, videoPcmFile.getAbsolutePath(), startTimeUs, endTimeUs);
-        File tempAacFile =  new File(cacheDir, "aactemp_" + System.currentTimeMillis() + ".pcm");
+        File tempAacFile = new File(cacheDir, "aactemp_" + System.currentTimeMillis() + ".pcm");
         decodeToPCM(aacInput, tempAacFile.getAbsolutePath(), 0, duration);
-        if(AudioUtil.isStereo(aacInput)){
-            AudioUtil.stereoToMono(tempAacFile.getAbsolutePath(),aacPcmFile.getAbsolutePath());
-        }else{
+        if (AudioUtil.isStereo(aacInput)) {
+            AudioUtil.stereoToMono(tempAacFile.getAbsolutePath(), aacPcmFile.getAbsolutePath());
+        } else {
             aacPcmFile = tempAacFile;
         }
 
         File adjustedPcm = new File(cacheDir, "adjusted_" + System.currentTimeMillis() + ".pcm");
         AudioUtil.mixPcm(videoPcmFile.getAbsolutePath(), aacPcmFile.getAbsolutePath(), adjustedPcm.getAbsolutePath()
-                , videoVolumn,aacVolumn);
+                , videoVolumn, aacVolumn);
 
         MediaExtractor oriExtrator = new MediaExtractor();
         oriExtrator.setDataSource(videoInput);
-        int oriAudioIndex = selectTrack(oriExtrator, true);
+        int oriAudioIndex = VideoUtil.selectTrack(oriExtrator, true);
         MediaFormat oriAudioFormat = oriExtrator.getTrackFormat(oriAudioIndex);
         int oriChannelCount = oriAudioFormat.getInteger(MediaFormat.KEY_CHANNEL_COUNT);
         int sampleRate = oriAudioFormat.getInteger(MediaFormat.KEY_SAMPLE_RATE);
@@ -710,19 +668,12 @@ public class VideoProcessor {
             channelConfig = AudioFormat.CHANNEL_IN_STEREO;
         }
         new PcmToWavUtil(sampleRate, channelConfig, AudioFormat.ENCODING_PCM_16BIT).pcmToWav(adjustedPcm.getAbsolutePath(), wavFile.getAbsolutePath());
-
-        //Test
-        AudioUtil.copyFile(videoPcmFile.getAbsolutePath(), "/mnt/sdcard/aac1.pcm");
-        AudioUtil.copyFile(aacPcmFile.getAbsolutePath(), "/mnt/sdcard/aac2.pcm");
-        AudioUtil.copyFile(tempAacFile.getAbsolutePath(), "/mnt/sdcard/aacs.pcm");
-        AudioUtil.copyFile(adjustedPcm.getAbsolutePath(), "/mnt/sdcard/aacout.pcm");
-
         tempAacFile.delete();
 
         final int TIMEOUT_US = 2500;
         MediaMuxer mediaMuxer = new MediaMuxer(output, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4);
         //重新将速率变化过后的pcm写入
-        int oriVideoIndex = selectTrack(oriExtrator, false);
+        int oriVideoIndex = VideoUtil.selectTrack(oriExtrator, false);
         MediaFormat oriVideoFormat = oriExtrator.getTrackFormat(oriVideoIndex);
         int muxerVideoIndex = mediaMuxer.addTrack(oriVideoFormat);
         int muxerAudioIndex = mediaMuxer.addTrack(oriAudioFormat);
@@ -730,15 +681,10 @@ public class VideoProcessor {
 
         MediaExtractor pcmExtrator = new MediaExtractor();
         pcmExtrator.setDataSource(wavFile.getAbsolutePath());
-        int audioTrack = selectTrack(pcmExtrator, true);
+        int audioTrack = VideoUtil.selectTrack(pcmExtrator, true);
         pcmExtrator.selectTrack(audioTrack);
         MediaFormat pcmTrackFormat = pcmExtrator.getTrackFormat(audioTrack);
-        int maxBufferSize;
-        if (pcmTrackFormat.containsKey(MediaFormat.KEY_MAX_INPUT_SIZE)) {
-            maxBufferSize = pcmTrackFormat.getInteger(MediaFormat.KEY_MAX_INPUT_SIZE);
-        } else {
-            maxBufferSize = 100 * 1000;
-        }
+        int maxBufferSize = VideoUtil.getAudioMaxBufferSize(pcmTrackFormat);
         ByteBuffer buffer = ByteBuffer.allocateDirect(maxBufferSize);
         MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
         int bitrate = oriAudioFormat.getInteger(MediaFormat.KEY_BIT_RATE);
@@ -857,7 +803,7 @@ public class VideoProcessor {
     private static void decodeToPCM(String audioPath, String outPath, Integer startTimeUs, Integer endTimeUs) throws IOException {
         MediaExtractor extractor = new MediaExtractor();
         extractor.setDataSource(audioPath);
-        int audioTrack = selectTrack(extractor, true);
+        int audioTrack = VideoUtil.selectTrack(extractor, true);
         extractor.selectTrack(audioTrack);
         if (startTimeUs == null) {
             startTimeUs = 0;
@@ -943,46 +889,4 @@ public class VideoProcessor {
     }
 
 
-    private static int selectTrack(MediaExtractor extractor, boolean audio) {
-        int numTracks = extractor.getTrackCount();
-        for (int i = 0; i < numTracks; i++) {
-            MediaFormat format = extractor.getTrackFormat(i);
-            String mime = format.getString(MediaFormat.KEY_MIME);
-            if (audio) {
-                if (mime.startsWith("audio/")) {
-                    return i;
-                }
-            } else {
-                if (mime.startsWith("video/")) {
-                    return i;
-                }
-            }
-        }
-        return -5;
-    }
-
-    private static int getBitrateMultiple(String videoPath) throws IOException {
-        if (TextUtils.isEmpty(videoPath)) {
-            return 0;
-        }
-        MediaExtractor extractor = new MediaExtractor();
-        extractor.setDataSource(videoPath);
-        int trackIndex = selectTrack(extractor, false);
-        extractor.selectTrack(trackIndex);
-        int keyFrameCount = 0;
-        int frameCount = 0;
-        while (true) {
-            long sampleTime = extractor.getSampleTime();
-            if (sampleTime < 0) {
-                break;
-            }
-            int flags = extractor.getSampleFlags();
-            if ((flags & MediaExtractor.SAMPLE_FLAG_SYNC) != 0) {
-                keyFrameCount++;
-            }
-            frameCount++;
-        }
-        extractor.release();
-        return (frameCount - keyFrameCount) / keyFrameCount;
-    }
 }

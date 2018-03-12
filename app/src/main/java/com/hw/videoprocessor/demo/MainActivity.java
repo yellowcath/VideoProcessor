@@ -19,11 +19,14 @@ import android.provider.DocumentsContract;
 import android.provider.MediaStore;
 import android.support.v4.app.ActivityCompat;
 import android.support.v7.app.AppCompatActivity;
+import android.support.v7.widget.Toolbar;
+import android.view.Menu;
+import android.view.MenuItem;
 import android.view.View;
-import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 import android.widget.VideoView;
+import com.hw.videoprocessor.VideoEffects;
 import com.hw.videoprocessor.VideoProcessor;
 import com.hw.videoprocessor.util.CL;
 import com.jaygoo.widget.RangeSeekBar;
@@ -49,17 +52,15 @@ public class MainActivity extends AppCompatActivity {
     private static final String POSITION = "position";
     private static final String FILEPATH = "filepath";
     private int stopPosition;
-    private ScrollView mainlayout;
     private TextView tvLeft, tvRight;
     private String filePath;
     private int duration;
-    private Context mContext;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-        mContext = this;
+        initActionBar();
         CL.setLogEnable(true);
         final TextView uploadVideo = (TextView) findViewById(R.id.uploadVideo);
         TextView cutVideo = (TextView) findViewById(R.id.cropVideo);
@@ -75,10 +76,10 @@ public class MainActivity extends AppCompatActivity {
 
         videoView = (VideoView) findViewById(R.id.videoView);
         rangeSeekBar = (RangeSeekBar) findViewById(R.id.rangeSeekBar);
-        mainlayout = (ScrollView) findViewById(R.id.mainlayout);
         progressDialog = new ProgressDialog(this);
         progressDialog.setTitle(null);
         progressDialog.setCancelable(false);
+        progressDialog.setMessage("please wait......");
         rangeSeekBar.setEnabled(false);
 
         uploadVideo.setOnClickListener(new View.OnClickListener() {
@@ -160,6 +161,36 @@ public class MainActivity extends AppCompatActivity {
             }
         });
     }
+
+    @Override
+    public boolean onCreateOptionsMenu(Menu menu) {
+        getMenuInflater().inflate(R.menu.main, menu);
+        return true;
+    }
+
+    private void initActionBar() {
+        Toolbar toolbar = (Toolbar) findViewById(R.id.activity_main_toolbar);
+        setSupportActionBar(toolbar);
+        toolbar.setTitle("VideoProcessor");
+        toolbar.setOnMenuItemClickListener(new Toolbar.OnMenuItemClickListener() {
+            @Override
+            public boolean onMenuItemClick(MenuItem item) {
+                switch (item.getItemId()) {
+                    case R.id.menu_kichiku:
+                        if (selectedVideoUri != null) {
+                            executeKichikuVideo();
+                        } else {
+                            Toast.makeText(getApplicationContext(), "Please upload a video", Toast.LENGTH_SHORT).show();
+                        }
+                        break;
+
+                }
+                return true;
+            }
+        });
+
+    }
+
 
     private void getPermission() {
         String[] params = null;
@@ -298,6 +329,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void executeCutVideo(final int startMs, final int endMs) {
+        progressDialog.show();
         File moviesDir = Environment.getExternalStoragePublicDirectory(
                 Environment.DIRECTORY_MOVIES
         );
@@ -326,7 +358,9 @@ public class MainActivity extends AppCompatActivity {
                     startActivity(intent);
                 } catch (Exception e) {
                     e.printStackTrace();
+                    Toast.makeText(getApplicationContext(),"process error!",Toast.LENGTH_SHORT).show();
                 }
+                progressDialog.dismiss();
             }
         }).start();
     }
@@ -335,7 +369,7 @@ public class MainActivity extends AppCompatActivity {
         File moviesDir = Environment.getExternalStoragePublicDirectory(
                 Environment.DIRECTORY_MOVIES
         );
-
+        progressDialog.show();
         String filePrefix = "scale_video";
         String fileExtn = ".mp4";
         final String selectVideoPath = getPath(MainActivity.this, selectedVideoUri);
@@ -369,7 +403,9 @@ public class MainActivity extends AppCompatActivity {
                     startActivity(intent);
                 } catch (Exception e) {
                     e.printStackTrace();
+                    Toast.makeText(getApplicationContext(),"process error!",Toast.LENGTH_SHORT).show();
                 }
+                progressDialog.dismiss();
             }
         }).start();
     }
@@ -378,7 +414,7 @@ public class MainActivity extends AppCompatActivity {
         File moviesDir = Environment.getExternalStoragePublicDirectory(
                 Environment.DIRECTORY_MOVIES
         );
-
+        progressDialog.show();
         String filePrefix = "scale_video";
         String fileExtn = ".mp4";
         final String selectVideoPath = getPath(MainActivity.this, selectedVideoUri);
@@ -396,23 +432,60 @@ public class MainActivity extends AppCompatActivity {
                 try {
                     final String aacPath = new File(getCacheDir(), "test.aac").getAbsolutePath();
                     copyAssets("test.aac", aacPath);
-                    VideoProcessor.mixAudioTrack(getApplicationContext(),selectVideoPath, aacPath, filePath, startMs, endMs,0,70);
+                    VideoProcessor.mixAudioTrack(getApplicationContext(), selectVideoPath, aacPath, filePath, startMs, endMs, 50, 50);
                     Intent intent = new Intent(MainActivity.this, PreviewActivity.class);
                     intent.putExtra(FILEPATH, filePath);
                     startActivity(intent);
                 } catch (Exception e) {
                     e.printStackTrace();
+                    Toast.makeText(getApplicationContext(),"process error!",Toast.LENGTH_SHORT).show();
                 }
+                progressDialog.dismiss();
             }
         }).start();
     }
 
+    private void executeKichikuVideo() {
+        File moviesDir = Environment.getExternalStoragePublicDirectory(
+                Environment.DIRECTORY_MOVIES
+        );
+        progressDialog.show();
+        String filePrefix = "kichiku_video";
+        String fileExtn = ".mp4";
+        final String selectVideoPath = getPath(MainActivity.this, selectedVideoUri);
+        File dest = new File(moviesDir, filePrefix + fileExtn);
+        int fileNo = 0;
+        while (dest.exists()) {
+            fileNo++;
+            dest = new File(moviesDir, filePrefix + fileNo + fileExtn);
+        }
+        filePath = dest.getAbsolutePath();
+
+        MediaMetadataRetriever retriever = new MediaMetadataRetriever();
+        retriever.setDataSource(selectVideoPath);
+
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    VideoEffects.doKichiku(getApplicationContext(), selectVideoPath, filePath, 2, 2000);
+                    Intent intent = new Intent(MainActivity.this, PreviewActivity.class);
+                    intent.putExtra(FILEPATH, filePath);
+                    startActivity(intent);
+                } catch (Exception e) {
+                    e.printStackTrace();
+                    Toast.makeText(getApplicationContext(),"process error!",Toast.LENGTH_SHORT).show();
+                }
+                progressDialog.dismiss();
+            }
+        }).start();
+    }
 
     private void executeSpeedVideo(final int startMs, final int endMs, final float speed) {
         File moviesDir = Environment.getExternalStoragePublicDirectory(
                 Environment.DIRECTORY_MOVIES
         );
-
+        progressDialog.show();
         String filePrefix = "speed_video";
         String fileExtn = ".mp4";
         final String selectVideoPath = getPath(MainActivity.this, selectedVideoUri);
@@ -438,7 +511,9 @@ public class MainActivity extends AppCompatActivity {
                     startActivity(intent);
                 } catch (Exception e) {
                     e.printStackTrace();
+                    Toast.makeText(getApplicationContext(),"process error!",Toast.LENGTH_SHORT).show();
                 }
+                progressDialog.dismiss();
             }
         }).start();
     }
@@ -447,7 +522,7 @@ public class MainActivity extends AppCompatActivity {
         File moviesDir = Environment.getExternalStoragePublicDirectory(
                 Environment.DIRECTORY_MOVIES
         );
-
+        progressDialog.show();
         String filePrefix = "revert_video";
         String fileExtn = ".mp4";
         final String selectVideoPath = getPath(MainActivity.this, selectedVideoUri);
@@ -472,7 +547,9 @@ public class MainActivity extends AppCompatActivity {
                     startActivity(intent);
                 } catch (Exception e) {
                     e.printStackTrace();
+                    Toast.makeText(getApplicationContext(),"process error!",Toast.LENGTH_SHORT).show();
                 }
+                progressDialog.dismiss();
             }
         }).start();
     }
