@@ -118,6 +118,7 @@ public class VideoProcessor {
         int originHeight = Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT));
         int rotationValue = Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION));
         int oriBitrate = Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_BITRATE));
+        retriever.release();
         if (bitrate == null) {
             bitrate = oriBitrate;
         }
@@ -379,61 +380,66 @@ public class VideoProcessor {
         final int TIMEOUT_US = 2500;
         File pcmFile = new File(context.getCacheDir(), System.currentTimeMillis() + ".pcm");
         FileChannel writeChannel = new FileOutputStream(pcmFile).getChannel();
-        while (!decodeDone) {
-            if (!decodeInputDone) {
-                boolean eof = false;
-                int decodeInputIndex = decoder.dequeueInputBuffer(TIMEOUT_US);
-                if (decodeInputIndex >= 0) {
-                    long sampleTimeUs = extractor.getSampleTime();
-                    if (sampleTimeUs == -1) {
-                        eof = true;
-                    } else if (sampleTimeUs < startTimeUs) {
-                        extractor.advance();
-                        continue;
-                    } else if (endTimeUs != null && sampleTimeUs > endTimeUs) {
-                        eof = true;
-                    }
-
-                    if (eof) {
-                        decodeInputDone = true;
-                        decoder.queueInputBuffer(decodeInputIndex, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM);
-                    } else {
-                        info.size = extractor.readSampleData(buffer, 0);
-                        info.presentationTimeUs = sampleTimeUs;
-                        info.flags = extractor.getSampleFlags();
-                        ByteBuffer inputBuffer = decoder.getInputBuffer(decodeInputIndex);
-                        inputBuffer.put(buffer);
-                        CL.it(TAG, "audio decode queueInputBuffer " + info.presentationTimeUs / 1000);
-                        decoder.queueInputBuffer(decodeInputIndex, 0, info.size, info.presentationTimeUs, info.flags);
-                        extractor.advance();
-                    }
-
-                }
-            }
-
+        try {
             while (!decodeDone) {
-                int outputBufferIndex = decoder.dequeueOutputBuffer(info, TIMEOUT_US);
-                if (outputBufferIndex == MediaCodec.INFO_TRY_AGAIN_LATER) {
-                    break;
-                } else if (outputBufferIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
-                    MediaFormat newFormat = decoder.getOutputFormat();
-                    CL.it(TAG, "audio decode newFormat = " + newFormat);
-                } else if (outputBufferIndex < 0) {
-                    //ignore
-                    CL.et(TAG, "unexpected result from audio decoder.dequeueOutputBuffer: " + outputBufferIndex);
-                } else {
-                    if (info.flags == MediaCodec.BUFFER_FLAG_END_OF_STREAM) {
-                        decodeDone = true;
-                    } else {
-                        ByteBuffer decodeOutputBuffer = decoder.getOutputBuffer(outputBufferIndex);
-                        CL.it(TAG, "audio decode saveFrame " + info.presentationTimeUs / 1000);
-                        writeChannel.write(decodeOutputBuffer);
+                if (!decodeInputDone) {
+                    boolean eof = false;
+                    int decodeInputIndex = decoder.dequeueInputBuffer(TIMEOUT_US);
+                    if (decodeInputIndex >= 0) {
+                        long sampleTimeUs = extractor.getSampleTime();
+                        if (sampleTimeUs == -1) {
+                            eof = true;
+                        } else if (sampleTimeUs < startTimeUs) {
+                            extractor.advance();
+                            continue;
+                        } else if (endTimeUs != null && sampleTimeUs > endTimeUs) {
+                            eof = true;
+                        }
+
+                        if (eof) {
+                            decodeInputDone = true;
+                            decoder.queueInputBuffer(decodeInputIndex, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM);
+                        } else {
+                            info.size = extractor.readSampleData(buffer, 0);
+                            info.presentationTimeUs = sampleTimeUs;
+                            info.flags = extractor.getSampleFlags();
+                            ByteBuffer inputBuffer = decoder.getInputBuffer(decodeInputIndex);
+                            inputBuffer.put(buffer);
+                            CL.it(TAG, "audio decode queueInputBuffer " + info.presentationTimeUs / 1000);
+                            decoder.queueInputBuffer(decodeInputIndex, 0, info.size, info.presentationTimeUs, info.flags);
+                            extractor.advance();
+                        }
+
                     }
-                    decoder.releaseOutputBuffer(outputBufferIndex, false);
+                }
+
+                while (!decodeDone) {
+                    int outputBufferIndex = decoder.dequeueOutputBuffer(info, TIMEOUT_US);
+                    if (outputBufferIndex == MediaCodec.INFO_TRY_AGAIN_LATER) {
+                        break;
+                    } else if (outputBufferIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
+                        MediaFormat newFormat = decoder.getOutputFormat();
+                        CL.it(TAG, "audio decode newFormat = " + newFormat);
+                    } else if (outputBufferIndex < 0) {
+                        //ignore
+                        CL.et(TAG, "unexpected result from audio decoder.dequeueOutputBuffer: " + outputBufferIndex);
+                    } else {
+                        if (info.flags == MediaCodec.BUFFER_FLAG_END_OF_STREAM) {
+                            decodeDone = true;
+                        } else {
+                            ByteBuffer decodeOutputBuffer = decoder.getOutputBuffer(outputBufferIndex);
+                            CL.it(TAG, "audio decode saveFrame " + info.presentationTimeUs / 1000);
+                            writeChannel.write(decodeOutputBuffer);
+                        }
+                        decoder.releaseOutputBuffer(outputBufferIndex, false);
+                    }
                 }
             }
+        } finally {
+            writeChannel.close();
+            extractor.release();
+            decoder.release();
         }
-        writeChannel.close();
 
         int sampleRate = oriAudioFormat.getInteger(MediaFormat.KEY_SAMPLE_RATE);
         int oriChannelCount = oriAudioFormat.getInteger(MediaFormat.KEY_CHANNEL_COUNT);
@@ -479,65 +485,72 @@ public class VideoProcessor {
         long lastAudioFrameTimeUs = -1;
         final int AAC_FRAME_TIME_US = 1024 * 1000 * 1000 / sampleRate;
         boolean detectTimeError = false;
-        while (!encodeDone) {
-            int inputBufferIndex = encoder.dequeueInputBuffer(TIMEOUT_US);
-            if (!encodeInputDone && inputBufferIndex >= 0) {
-                long sampleTime = pcmExtrator.getSampleTime();
-                if (sampleTime < 0) {
-                    encodeInputDone = true;
-                    encoder.queueInputBuffer(inputBufferIndex, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM);
-                } else {
-                    int flags = pcmExtrator.getSampleFlags();
-                    buffer.clear();
-                    int size = pcmExtrator.readSampleData(buffer, 0);
-                    ByteBuffer inputBuffer = encoder.getInputBuffer(inputBufferIndex);
-                    inputBuffer.clear();
-                    inputBuffer.put(buffer);
-                    inputBuffer.position(0);
-                    CL.it(TAG, "audio queuePcmBuffer " + sampleTime / 1000 + " size:" + size);
-                    encoder.queueInputBuffer(inputBufferIndex, 0, size, sampleTime, flags);
-                    pcmExtrator.advance();
+        try {
+            while (!encodeDone) {
+                int inputBufferIndex = encoder.dequeueInputBuffer(TIMEOUT_US);
+                if (!encodeInputDone && inputBufferIndex >= 0) {
+                    long sampleTime = pcmExtrator.getSampleTime();
+                    if (sampleTime < 0) {
+                        encodeInputDone = true;
+                        encoder.queueInputBuffer(inputBufferIndex, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM);
+                    } else {
+                        int flags = pcmExtrator.getSampleFlags();
+                        buffer.clear();
+                        int size = pcmExtrator.readSampleData(buffer, 0);
+                        ByteBuffer inputBuffer = encoder.getInputBuffer(inputBufferIndex);
+                        inputBuffer.clear();
+                        inputBuffer.put(buffer);
+                        inputBuffer.position(0);
+                        CL.it(TAG, "audio queuePcmBuffer " + sampleTime / 1000 + " size:" + size);
+                        encoder.queueInputBuffer(inputBufferIndex, 0, size, sampleTime, flags);
+                        pcmExtrator.advance();
+                    }
                 }
-            }
 
-            while (true) {
-                int outputBufferIndex = encoder.dequeueOutputBuffer(info, TIMEOUT_US);
-                if (outputBufferIndex == MediaCodec.INFO_TRY_AGAIN_LATER) {
-                    break;
-                } else if (outputBufferIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
-                    MediaFormat newFormat = encoder.getOutputFormat();
-                    CL.it(TAG, "audio decode newFormat = " + newFormat);
-                } else if (outputBufferIndex < 0) {
-                    //ignore
-                    CL.et(TAG, "unexpected result from audio decoder.dequeueOutputBuffer: " + outputBufferIndex);
-                } else {
-                    if (info.flags == MediaCodec.BUFFER_FLAG_END_OF_STREAM) {
-                        encodeDone = true;
+                while (true) {
+                    int outputBufferIndex = encoder.dequeueOutputBuffer(info, TIMEOUT_US);
+                    if (outputBufferIndex == MediaCodec.INFO_TRY_AGAIN_LATER) {
                         break;
-                    }
-                    ByteBuffer encodeOutputBuffer = encoder.getOutputBuffer(outputBufferIndex);
-                    CL.it(TAG, "audio writeSampleData " + info.presentationTimeUs + " size:" + info.size + " flags:" + info.flags);
-                    if (!detectTimeError && lastAudioFrameTimeUs != -1 && info.presentationTimeUs < lastAudioFrameTimeUs + AAC_FRAME_TIME_US) {
-                        //某些情况下帧时间会出错，目前未找到原因（系统相机录得双声道视频正常，我录的单声道视频不正常）
-                        CL.et(TAG, "audio 时间戳错误，lastAudioFrameTimeUs:" + lastAudioFrameTimeUs + " " +
-                                "info.presentationTimeUs:" + info.presentationTimeUs);
-                        detectTimeError = true;
-                    }
-                    if (detectTimeError) {
-                        info.presentationTimeUs = lastAudioFrameTimeUs + AAC_FRAME_TIME_US;
-                        CL.et(TAG, "audio 时间戳错误，使用修正的时间戳:" + info.presentationTimeUs);
-                    }
-                    lastAudioFrameTimeUs = info.presentationTimeUs;
-                    mediaMuxer.writeSampleData(muxerAudioTrackIndex, encodeOutputBuffer, info);
+                    } else if (outputBufferIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
+                        MediaFormat newFormat = encoder.getOutputFormat();
+                        CL.it(TAG, "audio decode newFormat = " + newFormat);
+                    } else if (outputBufferIndex < 0) {
+                        //ignore
+                        CL.et(TAG, "unexpected result from audio decoder.dequeueOutputBuffer: " + outputBufferIndex);
+                    } else {
+                        if (info.flags == MediaCodec.BUFFER_FLAG_END_OF_STREAM) {
+                            encodeDone = true;
+                            break;
+                        }
+                        ByteBuffer encodeOutputBuffer = encoder.getOutputBuffer(outputBufferIndex);
+                        CL.it(TAG, "audio writeSampleData " + info.presentationTimeUs + " size:" + info.size + " flags:" + info.flags);
+                        if (!detectTimeError && lastAudioFrameTimeUs != -1 && info.presentationTimeUs < lastAudioFrameTimeUs + AAC_FRAME_TIME_US) {
+                            //某些情况下帧时间会出错，目前未找到原因（系统相机录得双声道视频正常，我录的单声道视频不正常）
+                            CL.et(TAG, "audio 时间戳错误，lastAudioFrameTimeUs:" + lastAudioFrameTimeUs + " " +
+                                    "info.presentationTimeUs:" + info.presentationTimeUs);
+                            detectTimeError = true;
+                        }
+                        if (detectTimeError) {
+                            info.presentationTimeUs = lastAudioFrameTimeUs + AAC_FRAME_TIME_US;
+                            CL.et(TAG, "audio 时间戳错误，使用修正的时间戳:" + info.presentationTimeUs);
+                        }
+                        lastAudioFrameTimeUs = info.presentationTimeUs;
+                        mediaMuxer.writeSampleData(muxerAudioTrackIndex, encodeOutputBuffer, info);
 
-                    encodeOutputBuffer.clear();
-                    encoder.releaseOutputBuffer(outputBufferIndex, false);
+                        encodeOutputBuffer.clear();
+                        encoder.releaseOutputBuffer(outputBufferIndex, false);
+                    }
                 }
             }
+        } finally {
+            pcmFile.delete();
+            wavFile.delete();
+            outFile.delete();
+            pcmExtrator.release();
+            encoder.release();
+            mediaMuxer.release();
         }
-        pcmFile.delete();
-        wavFile.delete();
-        outFile.delete();
+
     }
 
     /**
@@ -547,6 +560,7 @@ public class VideoProcessor {
         MediaMetadataRetriever retriever = new MediaMetadataRetriever();
         retriever.setDataSource(input);
         int durationMs = Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION));
+        retriever.release();
 
         MediaExtractor extractor = new MediaExtractor();
         extractor.setDataSource(input);
@@ -569,55 +583,59 @@ public class VideoProcessor {
         extractor.seekTo(durationMs * 1000 + MIN_FRAME_INTERVAL, MediaExtractor.SEEK_TO_PREVIOUS_SYNC);
         long lastFrameTimeUs = -1;
         MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
-        //写视频帧
-        while (true) {
-            long sampleTime = extractor.getSampleTime();
-            if (lastFrameTimeUs == -1) {
-                lastFrameTimeUs = sampleTime;
-            }
-            info.presentationTimeUs = lastFrameTimeUs - sampleTime;
-            info.size = extractor.readSampleData(buffer, 0);
-            info.flags = extractor.getSampleFlags();
+        try {
+            //写视频帧
+            while (true) {
+                long sampleTime = extractor.getSampleTime();
+                if (lastFrameTimeUs == -1) {
+                    lastFrameTimeUs = sampleTime;
+                }
+                info.presentationTimeUs = lastFrameTimeUs - sampleTime;
+                info.size = extractor.readSampleData(buffer, 0);
+                info.flags = extractor.getSampleFlags();
 
-            if (info.size < 0) {
-                break;
+                if (info.size < 0) {
+                    break;
+                }
+                mediaMuxer.writeSampleData(videoMuxerTrackIndex, buffer, info);
+                long seekTime = sampleTime - MIN_FRAME_INTERVAL;
+                if (seekTime <= 0) {
+                    break;
+                }
+                extractor.seekTo(seekTime, MediaExtractor.SEEK_TO_PREVIOUS_SYNC);
             }
-            mediaMuxer.writeSampleData(videoMuxerTrackIndex, buffer, info);
-            long seekTime = sampleTime - MIN_FRAME_INTERVAL;
-            if (seekTime <= 0) {
-                break;
+            //写音频帧
+            extractor.unselectTrack(videoTrackIndex);
+            extractor.selectTrack(audioTrackIndex);
+            extractor.seekTo(durationMs * 1000 + MIN_FRAME_INTERVAL, MediaExtractor.SEEK_TO_PREVIOUS_SYNC);
+            lastFrameTimeUs = -1;
+            while (true) {
+                long sampleTime = extractor.getSampleTime();
+                if (lastFrameTimeUs == -1) {
+                    lastFrameTimeUs = sampleTime;
+                }
+                info.presentationTimeUs = lastFrameTimeUs - sampleTime;
+                info.size = extractor.readSampleData(buffer, 0);
+                info.flags = extractor.getSampleFlags();
+                if (info.size < 0) {
+                    break;
+                }
+                mediaMuxer.writeSampleData(audioMuxerTrackIndex, buffer, info);
+                long seekTime = sampleTime - MIN_FRAME_INTERVAL;
+                if (seekTime <= 0) {
+                    break;
+                }
+                extractor.seekTo(seekTime, MediaExtractor.SEEK_TO_PREVIOUS_SYNC);
             }
-            extractor.seekTo(seekTime, MediaExtractor.SEEK_TO_PREVIOUS_SYNC);
+        } finally {
+            extractor.release();
+            mediaMuxer.release();
         }
-        //写音频帧
-        extractor.unselectTrack(videoTrackIndex);
-        extractor.selectTrack(audioTrackIndex);
-        extractor.seekTo(durationMs * 1000 + MIN_FRAME_INTERVAL, MediaExtractor.SEEK_TO_PREVIOUS_SYNC);
-        lastFrameTimeUs = -1;
-        while (true) {
-            long sampleTime = extractor.getSampleTime();
-            if (lastFrameTimeUs == -1) {
-                lastFrameTimeUs = sampleTime;
-            }
-            info.presentationTimeUs = lastFrameTimeUs - sampleTime;
-            info.size = extractor.readSampleData(buffer, 0);
-            info.flags = extractor.getSampleFlags();
-            if (info.size < 0) {
-                break;
-            }
-            mediaMuxer.writeSampleData(audioMuxerTrackIndex, buffer, info);
-            long seekTime = sampleTime - MIN_FRAME_INTERVAL;
-            if (seekTime <= 0) {
-                break;
-            }
-            extractor.seekTo(seekTime, MediaExtractor.SEEK_TO_PREVIOUS_SYNC);
-        }
-        mediaMuxer.stop();
-        mediaMuxer.release();
     }
 
     /**
      * 不需要改变音频速率的情况下，直接读写就可
+     * 只支持16bit音频
      *
      * @param videoVolumn 0静音，50表示原音
      * @param aacVolumn   0静音，50表示原音
@@ -642,15 +660,17 @@ public class VideoProcessor {
         } else {
             duration = endTimeUs - startTimeUs;
         }
+        //音频转化为PCM
         decodeToPCM(videoInput, videoPcmFile.getAbsolutePath(), startTimeUs, endTimeUs);
         File tempAacFile = new File(cacheDir, "aactemp_" + System.currentTimeMillis() + ".pcm");
         decodeToPCM(aacInput, tempAacFile.getAbsolutePath(), 0, duration);
         if (AudioUtil.isStereo(aacInput)) {
+            //立体声转为单声道
             AudioUtil.stereoToMono(tempAacFile.getAbsolutePath(), aacPcmFile.getAbsolutePath());
         } else {
             aacPcmFile = tempAacFile;
         }
-
+        //混合并调整音量
         File adjustedPcm = new File(cacheDir, "adjusted_" + System.currentTimeMillis() + ".pcm");
         AudioUtil.mixPcm(videoPcmFile.getAbsolutePath(), aacPcmFile.getAbsolutePath(), adjustedPcm.getAbsolutePath()
                 , videoVolumn, aacVolumn);
@@ -667,9 +687,10 @@ public class VideoProcessor {
         if (oriChannelCount == 2) {
             channelConfig = AudioFormat.CHANNEL_IN_STEREO;
         }
+        //PCM转WAV
         new PcmToWavUtil(sampleRate, channelConfig, AudioFormat.ENCODING_PCM_16BIT).pcmToWav(adjustedPcm.getAbsolutePath(), wavFile.getAbsolutePath());
         tempAacFile.delete();
-
+        //重新写入音频
         final int TIMEOUT_US = 2500;
         MediaMuxer mediaMuxer = new MediaMuxer(output, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4);
         //重新将速率变化过后的pcm写入
@@ -701,100 +722,104 @@ public class VideoProcessor {
         long lastAudioFrameTimeUs = -1;
         final int AAC_FRAME_TIME_US = 1024 * 1000 * 1000 / sampleRate;
         boolean detectTimeError = false;
+        try {
+            while (!encodeDone) {
+                int inputBufferIndex = encoder.dequeueInputBuffer(TIMEOUT_US);
+                if (!encodeInputDone && inputBufferIndex >= 0) {
+                    long sampleTime = pcmExtrator.getSampleTime();
+                    if (sampleTime < 0) {
+                        encodeInputDone = true;
+                        encoder.queueInputBuffer(inputBufferIndex, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM);
+                    } else {
+                        int flags = pcmExtrator.getSampleFlags();
+                        buffer.clear();
+                        int size = pcmExtrator.readSampleData(buffer, 0);
+                        ByteBuffer inputBuffer = encoder.getInputBuffer(inputBufferIndex);
+                        inputBuffer.clear();
+                        inputBuffer.put(buffer);
+                        inputBuffer.position(0);
+                        CL.it(TAG, "audio queuePcmBuffer " + sampleTime / 1000 + " size:" + size);
+                        encoder.queueInputBuffer(inputBufferIndex, 0, size, sampleTime, flags);
+                        pcmExtrator.advance();
+                    }
+                }
 
-        while (!encodeDone) {
-            int inputBufferIndex = encoder.dequeueInputBuffer(TIMEOUT_US);
-            if (!encodeInputDone && inputBufferIndex >= 0) {
-                long sampleTime = pcmExtrator.getSampleTime();
-                if (sampleTime < 0) {
-                    encodeInputDone = true;
-                    encoder.queueInputBuffer(inputBufferIndex, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM);
-                } else {
-                    int flags = pcmExtrator.getSampleFlags();
-                    buffer.clear();
-                    int size = pcmExtrator.readSampleData(buffer, 0);
-                    ByteBuffer inputBuffer = encoder.getInputBuffer(inputBufferIndex);
-                    inputBuffer.clear();
-                    inputBuffer.put(buffer);
-                    inputBuffer.position(0);
-                    CL.it(TAG, "audio queuePcmBuffer " + sampleTime / 1000 + " size:" + size);
-                    encoder.queueInputBuffer(inputBufferIndex, 0, size, sampleTime, flags);
-                    pcmExtrator.advance();
+                while (true) {
+                    int outputBufferIndex = encoder.dequeueOutputBuffer(info, TIMEOUT_US);
+                    if (outputBufferIndex == MediaCodec.INFO_TRY_AGAIN_LATER) {
+                        break;
+                    } else if (outputBufferIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
+                        MediaFormat newFormat = encoder.getOutputFormat();
+                        CL.it(TAG, "audio decode newFormat = " + newFormat);
+                    } else if (outputBufferIndex < 0) {
+                        //ignore
+                        CL.et(TAG, "unexpected result from audio decoder.dequeueOutputBuffer: " + outputBufferIndex);
+                    } else {
+                        if (info.flags == MediaCodec.BUFFER_FLAG_END_OF_STREAM) {
+                            encodeDone = true;
+                            break;
+                        }
+                        ByteBuffer encodeOutputBuffer = encoder.getOutputBuffer(outputBufferIndex);
+                        CL.it(TAG, "audio writeSampleData " + info.presentationTimeUs + " size:" + info.size + " flags:" + info.flags);
+                        if (!detectTimeError && lastAudioFrameTimeUs != -1 && info.presentationTimeUs < lastAudioFrameTimeUs + AAC_FRAME_TIME_US) {
+                            //某些情况下帧时间会出错，目前未找到原因（系统相机录得双声道视频正常，我录的单声道视频不正常）
+                            CL.et(TAG, "audio 时间戳错误，lastAudioFrameTimeUs:" + lastAudioFrameTimeUs + " " +
+                                    "info.presentationTimeUs:" + info.presentationTimeUs);
+                            detectTimeError = true;
+                        }
+                        if (detectTimeError) {
+                            info.presentationTimeUs = lastAudioFrameTimeUs + AAC_FRAME_TIME_US;
+                            CL.et(TAG, "audio 时间戳错误，使用修正的时间戳:" + info.presentationTimeUs);
+                        }
+                        lastAudioFrameTimeUs = info.presentationTimeUs;
+                        mediaMuxer.writeSampleData(muxerAudioIndex, encodeOutputBuffer, info);
+
+                        encodeOutputBuffer.clear();
+                        encoder.releaseOutputBuffer(outputBufferIndex, false);
+                    }
                 }
             }
+            //重新将视频写入
+            oriExtrator.selectTrack(oriVideoIndex);
+            oriExtrator.seekTo(startTimeUs, MediaExtractor.SEEK_TO_PREVIOUS_SYNC);
+            maxBufferSize = oriExtrator.getTrackFormat(oriVideoIndex).getInteger(MediaFormat.KEY_MAX_INPUT_SIZE);
+            buffer = ByteBuffer.allocateDirect(maxBufferSize);
 
             while (true) {
-                int outputBufferIndex = encoder.dequeueOutputBuffer(info, TIMEOUT_US);
-                if (outputBufferIndex == MediaCodec.INFO_TRY_AGAIN_LATER) {
+                long sampleTimeUs = oriExtrator.getSampleTime();
+                if (sampleTimeUs == -1) {
                     break;
-                } else if (outputBufferIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
-                    MediaFormat newFormat = encoder.getOutputFormat();
-                    CL.it(TAG, "audio decode newFormat = " + newFormat);
-                } else if (outputBufferIndex < 0) {
-                    //ignore
-                    CL.et(TAG, "unexpected result from audio decoder.dequeueOutputBuffer: " + outputBufferIndex);
-                } else {
-                    if (info.flags == MediaCodec.BUFFER_FLAG_END_OF_STREAM) {
-                        encodeDone = true;
-                        break;
-                    }
-                    ByteBuffer encodeOutputBuffer = encoder.getOutputBuffer(outputBufferIndex);
-                    CL.it(TAG, "audio writeSampleData " + info.presentationTimeUs + " size:" + info.size + " flags:" + info.flags);
-                    if (!detectTimeError && lastAudioFrameTimeUs != -1 && info.presentationTimeUs < lastAudioFrameTimeUs + AAC_FRAME_TIME_US) {
-                        //某些情况下帧时间会出错，目前未找到原因（系统相机录得双声道视频正常，我录的单声道视频不正常）
-                        CL.et(TAG, "audio 时间戳错误，lastAudioFrameTimeUs:" + lastAudioFrameTimeUs + " " +
-                                "info.presentationTimeUs:" + info.presentationTimeUs);
-                        detectTimeError = true;
-                    }
-                    if (detectTimeError) {
-                        info.presentationTimeUs = lastAudioFrameTimeUs + AAC_FRAME_TIME_US;
-                        CL.et(TAG, "audio 时间戳错误，使用修正的时间戳:" + info.presentationTimeUs);
-                    }
-                    lastAudioFrameTimeUs = info.presentationTimeUs;
-                    mediaMuxer.writeSampleData(muxerAudioIndex, encodeOutputBuffer, info);
-
-                    encodeOutputBuffer.clear();
-                    encoder.releaseOutputBuffer(outputBufferIndex, false);
                 }
-            }
-        }
-        //重新将视频写入
-        oriExtrator.selectTrack(oriVideoIndex);
-        oriExtrator.seekTo(startTimeUs, MediaExtractor.SEEK_TO_PREVIOUS_SYNC);
-        maxBufferSize = oriExtrator.getTrackFormat(oriVideoIndex).getInteger(MediaFormat.KEY_MAX_INPUT_SIZE);
-        buffer = ByteBuffer.allocateDirect(maxBufferSize);
-
-        while (true) {
-            long sampleTimeUs = oriExtrator.getSampleTime();
-            if (sampleTimeUs == -1) {
-                break;
-            }
-            if (sampleTimeUs < startTimeUs) {
+                if (sampleTimeUs < startTimeUs) {
+                    oriExtrator.advance();
+                    continue;
+                }
+                if (endTimeUs != null && sampleTimeUs > endTimeUs) {
+                    break;
+                }
+                info.presentationTimeUs = sampleTimeUs - startTimeUs;
+                info.flags = oriExtrator.getSampleFlags();
+                info.size = oriExtrator.readSampleData(buffer, 0);
+                if (info.size < 0) {
+                    break;
+                }
+                //写入视频
+                mediaMuxer.writeSampleData(muxerVideoIndex, buffer, info);
                 oriExtrator.advance();
-                continue;
             }
-            if (endTimeUs != null && sampleTimeUs > endTimeUs) {
-                break;
-            }
-            info.presentationTimeUs = sampleTimeUs - startTimeUs;
-            info.flags = oriExtrator.getSampleFlags();
-            info.size = oriExtrator.readSampleData(buffer, 0);
-            if (info.size < 0) {
-                break;
-            }
-            //写入视频
-            mediaMuxer.writeSampleData(muxerVideoIndex, buffer, info);
-            oriExtrator.advance();
+        } finally {
+            aacPcmFile.delete();
+            videoPcmFile.delete();
+            adjustedPcm.delete();
+            wavFile.delete();
+
+            pcmExtrator.release();
+            oriExtrator.release();
+            mediaMuxer.release();
+            encoder.stop();
+            encoder.release();
         }
 
-        aacPcmFile.delete();
-        videoPcmFile.delete();
-        adjustedPcm.delete();
-        wavFile.delete();
-
-        mediaMuxer.release();
-        encoder.stop();
-        encoder.release();
     }
 
     /**
@@ -829,64 +854,67 @@ public class VideoProcessor {
         final int TIMEOUT_US = 2500;
         File pcmFile = new File(outPath);
         FileChannel writeChannel = new FileOutputStream(pcmFile).getChannel();
-        while (!decodeDone) {
-            if (!decodeInputDone) {
-                boolean eof = false;
-                int decodeInputIndex = decoder.dequeueInputBuffer(TIMEOUT_US);
-                if (decodeInputIndex >= 0) {
-                    long sampleTimeUs = extractor.getSampleTime();
-                    if (sampleTimeUs == -1) {
-                        eof = true;
-                    } else if (sampleTimeUs < startTimeUs) {
-                        extractor.advance();
-                        continue;
-                    } else if (endTimeUs != null && sampleTimeUs > endTimeUs) {
-                        eof = true;
-                    }
-
-                    if (eof) {
-                        decodeInputDone = true;
-                        decoder.queueInputBuffer(decodeInputIndex, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM);
-                    } else {
-                        info.size = extractor.readSampleData(buffer, 0);
-                        info.presentationTimeUs = sampleTimeUs;
-                        info.flags = extractor.getSampleFlags();
-                        ByteBuffer inputBuffer = decoder.getInputBuffer(decodeInputIndex);
-                        inputBuffer.put(buffer);
-                        CL.it(TAG, "audio decode queueInputBuffer " + info.presentationTimeUs / 1000);
-                        decoder.queueInputBuffer(decodeInputIndex, 0, info.size, info.presentationTimeUs, info.flags);
-                        extractor.advance();
-                    }
-
-                }
-            }
-
+        try {
             while (!decodeDone) {
-                int outputBufferIndex = decoder.dequeueOutputBuffer(info, TIMEOUT_US);
-                if (outputBufferIndex == MediaCodec.INFO_TRY_AGAIN_LATER) {
-                    break;
-                } else if (outputBufferIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
-                    MediaFormat newFormat = decoder.getOutputFormat();
-                    CL.it(TAG, "audio decode newFormat = " + newFormat);
-                } else if (outputBufferIndex < 0) {
-                    //ignore
-                    CL.et(TAG, "unexpected result from audio decoder.dequeueOutputBuffer: " + outputBufferIndex);
-                } else {
-                    if (info.flags == MediaCodec.BUFFER_FLAG_END_OF_STREAM) {
-                        decodeDone = true;
-                    } else {
-                        ByteBuffer decodeOutputBuffer = decoder.getOutputBuffer(outputBufferIndex);
-                        CL.it(TAG, "audio decode saveFrame " + info.presentationTimeUs / 1000);
-                        writeChannel.write(decodeOutputBuffer);
+                if (!decodeInputDone) {
+                    boolean eof = false;
+                    int decodeInputIndex = decoder.dequeueInputBuffer(TIMEOUT_US);
+                    if (decodeInputIndex >= 0) {
+                        long sampleTimeUs = extractor.getSampleTime();
+                        if (sampleTimeUs == -1) {
+                            eof = true;
+                        } else if (sampleTimeUs < startTimeUs) {
+                            extractor.advance();
+                            continue;
+                        } else if (endTimeUs != null && sampleTimeUs > endTimeUs) {
+                            eof = true;
+                        }
+
+                        if (eof) {
+                            decodeInputDone = true;
+                            decoder.queueInputBuffer(decodeInputIndex, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM);
+                        } else {
+                            info.size = extractor.readSampleData(buffer, 0);
+                            info.presentationTimeUs = sampleTimeUs;
+                            info.flags = extractor.getSampleFlags();
+                            ByteBuffer inputBuffer = decoder.getInputBuffer(decodeInputIndex);
+                            inputBuffer.put(buffer);
+                            CL.it(TAG, "audio decode queueInputBuffer " + info.presentationTimeUs / 1000);
+                            decoder.queueInputBuffer(decodeInputIndex, 0, info.size, info.presentationTimeUs, info.flags);
+                            extractor.advance();
+                        }
+
                     }
-                    decoder.releaseOutputBuffer(outputBufferIndex, false);
+                }
+
+                while (!decodeDone) {
+                    int outputBufferIndex = decoder.dequeueOutputBuffer(info, TIMEOUT_US);
+                    if (outputBufferIndex == MediaCodec.INFO_TRY_AGAIN_LATER) {
+                        break;
+                    } else if (outputBufferIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
+                        MediaFormat newFormat = decoder.getOutputFormat();
+                        CL.it(TAG, "audio decode newFormat = " + newFormat);
+                    } else if (outputBufferIndex < 0) {
+                        //ignore
+                        CL.et(TAG, "unexpected result from audio decoder.dequeueOutputBuffer: " + outputBufferIndex);
+                    } else {
+                        if (info.flags == MediaCodec.BUFFER_FLAG_END_OF_STREAM) {
+                            decodeDone = true;
+                        } else {
+                            ByteBuffer decodeOutputBuffer = decoder.getOutputBuffer(outputBufferIndex);
+                            CL.it(TAG, "audio decode saveFrame " + info.presentationTimeUs / 1000);
+                            writeChannel.write(decodeOutputBuffer);
+                        }
+                        decoder.releaseOutputBuffer(outputBufferIndex, false);
+                    }
                 }
             }
         }
-        writeChannel.close();
-        decoder.stop();
-        decoder.release();
+        finally {
+            writeChannel.close();
+            extractor.release();
+            decoder.stop();
+            decoder.release();
+        }
     }
-
-
 }
