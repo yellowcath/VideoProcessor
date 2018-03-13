@@ -21,7 +21,8 @@ public class VideoEffects {
         File speedVideo = new File(cacheDir, "speed_" + speed + ".mp4");
         VideoProcessor.processVideo(context, inputVideo, speedVideo.getAbsolutePath(), null, null, null, null,
                 speed, null, null);
-        List<File> fileList = VideoUtil.splitVideo(context,speedVideo.getAbsolutePath(), cacheDir.getAbsolutePath(), splitTimeMs, 500,0);
+        int bitrate = VideoUtil.getBitrateForAllKeyFrameVideo(inputVideo);
+        List<File> fileList = VideoUtil.splitVideo(context, speedVideo.getAbsolutePath(), cacheDir.getAbsolutePath(), splitTimeMs, 500, bitrate, 0);
         VideoUtil.combineVideos(fileList, outputVideo);
     }
 }

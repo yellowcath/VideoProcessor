@@ -34,7 +34,7 @@ public class VideoUtil {
      * @param minSliceSize 如果最后一个片段小于一定值,就合并到前一个片段
      * @return
      */
-    public static List<File> splitVideo(Context context, String inputVideo, String outputDir, int splitTimeMs, int minSliceSize, Integer iFrameInterval) throws IOException {
+    public static List<File> splitVideo(Context context, String inputVideo, String outputDir, int splitTimeMs, int minSliceSize,Integer bitrate, Integer iFrameInterval) throws IOException {
         MediaMetadataRetriever retriever = new MediaMetadataRetriever();
         retriever.setDataSource(inputVideo);
         int durationMs = Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION));
@@ -57,9 +57,8 @@ public class VideoUtil {
         for (Pair<Integer, Integer> pair : sliceList) {
             File file = new File(outputDir, pair.first + ".mp4");
             VideoProcessor.processVideo(context, inputVideo, file.getAbsolutePath(), null, null, pair.first,
-                    pair.second, null, null, iFrameInterval);
+                    pair.second, null, bitrate, iFrameInterval);
             AudioUtil.copyFile(file.getAbsolutePath(), "/mnt/sdcard/slice_" + pair.first + ".mp4");
-            CL.i("testLog,slice:" + "/mnt/sdcard/slice_" + pair.first + ".mp4");
             fileList.add(file);
         }
         return fileList;
@@ -393,31 +392,6 @@ public class VideoUtil {
             encoder.release();
             decoder.release();
         }
-//
-//        while (true) {
-//            long sampleTimeUs = extractor.getSampleTime();
-//            if (sampleTimeUs == -1) {
-//                break;
-//            }
-//            if (sampleTimeUs < startTimeUs) {
-//                extractor.advance();
-//                continue;
-//            }
-//            if (endTimeUs != null && sampleTimeUs > endTimeUs) {
-//                break;
-//            }
-//            info.presentationTimeUs = sampleTimeUs - startTimeUs + baseMuxerFrameTimeUs;
-//            info.flags = extractor.getSampleFlags();
-//            info.size = extractor.readSampleData(buffer, 0);
-//            if (info.size < 0) {
-//                break;
-//            }
-//
-//            Log.i("testLog","time:"+info.presentationTimeUs/1000f+" flag:"+info.flags);
-//            mediaMuxer.writeSampleData(muxerVideoTrackIndex, buffer, info);
-//            lastFrametimeUs = info.presentationTimeUs;
-//            extractor.advance();
-//        }
         return lastFrametimeUs;
     }
 
@@ -427,5 +401,38 @@ public class VideoUtil {
         } else {
             return 100 * 1000;
         }
+    }
+
+    /**
+     * 用于制作全关键帧视频时计算比特率应该为多少
+     *
+     * @return
+     */
+    static int getBitrateForAllKeyFrameVideo(String input) throws IOException {
+        MediaExtractor extractor = new MediaExtractor();
+        extractor.setDataSource(input);
+        int trackIndex = VideoUtil.selectTrack(extractor, false);
+        extractor.selectTrack(trackIndex);
+        int keyFrameCount = 0;
+        int frameCount = 0;
+        while (true) {
+            long sampleTime = extractor.getSampleTime();
+            if (sampleTime < 0) {
+                break;
+            }
+            int flags = extractor.getSampleFlags();
+            if ((flags & MediaExtractor.SAMPLE_FLAG_SYNC) != 0) {
+                keyFrameCount++;
+            }
+            frameCount++;
+            extractor.advance();
+        }
+        extractor.release();
+        float bitrateMultiple = (frameCount - keyFrameCount) / (float) keyFrameCount;
+        MediaMetadataRetriever retriever = new MediaMetadataRetriever();
+        retriever.setDataSource(input);
+        int oriBitrate = Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_BITRATE));
+        retriever.release();
+        return (int) (bitrateMultiple * oriBitrate);
     }
 }
