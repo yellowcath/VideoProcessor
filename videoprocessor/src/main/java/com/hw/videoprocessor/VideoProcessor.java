@@ -663,7 +663,7 @@ public class VideoProcessor {
         //音频转化为PCM
         decodeToPCM(videoInput, videoPcmFile.getAbsolutePath(), startTimeUs, endTimeUs);
         File tempAacFile = new File(cacheDir, "aactemp_" + System.currentTimeMillis() + ".pcm");
-        decodeToPCM(aacInput, tempAacFile.getAbsolutePath(), 0, duration);
+        decodeToPCM(aacInput, tempAacFile.getAbsolutePath(), 0, duration * 1000);
         if (AudioUtil.isStereo(aacInput)) {
             //立体声转为单声道
             AudioUtil.stereoToMono(tempAacFile.getAbsolutePath(), aacPcmFile.getAbsolutePath());
@@ -909,8 +909,7 @@ public class VideoProcessor {
                     }
                 }
             }
-        }
-        finally {
+        } finally {
             writeChannel.close();
             extractor.release();
             decoder.stop();
