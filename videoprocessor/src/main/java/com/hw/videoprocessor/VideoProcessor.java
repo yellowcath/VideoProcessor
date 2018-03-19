@@ -670,18 +670,13 @@ public class VideoProcessor {
         if (isAacStereo && isVideoStereo) {
             aacPcmFile = tempAacFile;
         } else if (isAacStereo) {
+            //立体声转为单声道
             AudioUtil.stereoToMono(tempAacFile.getAbsolutePath(), aacPcmFile.getAbsolutePath());
         } else if (isVideoStereo) {
             File tempVideoPacFile = new File(cacheDir, "videotemp_" + System.currentTimeMillis() + ".pcm");
             AudioUtil.copyFile(videoPcmFile.getAbsolutePath(), tempVideoPacFile.getAbsolutePath());
             AudioUtil.stereoToMono(tempVideoPacFile.getAbsolutePath(), videoPcmFile.getAbsolutePath());
             tempVideoPacFile.delete();
-        } else {
-            aacPcmFile = tempAacFile;
-        }
-        if (AudioUtil.isStereo(aacInput)) {
-            //立体声转为单声道
-            AudioUtil.stereoToMono(tempAacFile.getAbsolutePath(), aacPcmFile.getAbsolutePath());
         } else {
             aacPcmFile = tempAacFile;
         }
