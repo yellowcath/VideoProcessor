@@ -40,6 +40,8 @@ public class VideoProcessor {
      */
     public final static int DEFAULT_I_FRAME_INTERVAL = 1;
 
+    public final static int DEFAULT_AAC_BITRATE = 192 * 1000;
+
     public static void scaleVideo(Context context, String input, String output,
                                   int outWidth, int outHeight) throws IOException {
         processVideo(context, input, output, outWidth, outHeight, null, null, null, null, null);
@@ -315,8 +317,11 @@ public class VideoProcessor {
                     } else {
                         //编码数据可用
                         ByteBuffer outputBuffer = encoder.getOutputBuffer(outputBufferIndex);
-                        mediaMuxer.writeSampleData(videoTrackIndex, outputBuffer, info);
                         CL.it(TAG, "writeSampleData,size:" + info.size + " time:" + info.presentationTimeUs / 1000);
+                        if (info.flags == MediaCodec.BUFFER_FLAG_END_OF_STREAM && info.presentationTimeUs < 0) {
+                            info.presentationTimeUs = 0;
+                        }
+                        mediaMuxer.writeSampleData(videoTrackIndex, outputBuffer, info);
 
                         encoder.releaseOutputBuffer(outputBufferIndex, false);
                         if (info.flags == MediaCodec.BUFFER_FLAG_END_OF_STREAM) {
@@ -342,11 +347,16 @@ public class VideoProcessor {
             }
         } catch (Exception e) {
             CL.e(e);
+            e.printStackTrace();
         } finally {
-            mediaMuxer.release();
-            encoder.release();
-            decoder.release();
-            extractor.release();
+            try {
+                mediaMuxer.release();
+                encoder.release();
+                decoder.release();
+                extractor.release();
+            } catch (Exception e2) {
+                CL.e(e2);
+            }
         }
     }
 
@@ -472,7 +482,7 @@ public class VideoProcessor {
         maxBufferSize = VideoUtil.getAudioMaxBufferSize(pcmTrackFormat);
         buffer = ByteBuffer.allocateDirect(maxBufferSize);
 
-        int bitrate = oriAudioFormat.getInteger(MediaFormat.KEY_BIT_RATE);
+        int bitrate = VideoUtil.getAudioBitrate(oriAudioFormat);
         int channelCount = oriAudioFormat.getInteger(MediaFormat.KEY_CHANNEL_COUNT);
         MediaFormat encodeFormat = MediaFormat.createAudioFormat(MediaFormat.MIMETYPE_AUDIO_AAC, sampleRate, channelCount);//参数对应-> mime type、采样率、声道数
         encodeFormat.setInteger(MediaFormat.KEY_BIT_RATE, bitrate);//比特率
@@ -718,7 +728,7 @@ public class VideoProcessor {
         int maxBufferSize = VideoUtil.getAudioMaxBufferSize(pcmTrackFormat);
         ByteBuffer buffer = ByteBuffer.allocateDirect(maxBufferSize);
         MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
-        int bitrate = oriAudioFormat.getInteger(MediaFormat.KEY_BIT_RATE);
+        int bitrate = VideoUtil.getAudioBitrate(oriAudioFormat);
         int channelCount = oriAudioFormat.getInteger(MediaFormat.KEY_CHANNEL_COUNT);
         MediaFormat encodeFormat = MediaFormat.createAudioFormat(MediaFormat.MIMETYPE_AUDIO_AAC, sampleRate, channelCount);//参数对应-> mime type、采样率、声道数
         encodeFormat.setInteger(MediaFormat.KEY_BIT_RATE, bitrate);//比特率

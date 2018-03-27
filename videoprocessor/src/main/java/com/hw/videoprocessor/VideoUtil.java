@@ -34,7 +34,7 @@ public class VideoUtil {
      * @param minSliceSize 如果最后一个片段小于一定值,就合并到前一个片段
      * @return
      */
-    public static List<File> splitVideo(Context context, String inputVideo, String outputDir, int splitTimeMs, int minSliceSize,Integer bitrate, Integer iFrameInterval) throws IOException {
+    public static List<File> splitVideo(Context context, String inputVideo, String outputDir, int splitTimeMs, int minSliceSize, Integer bitrate, Integer iFrameInterval) throws IOException {
         MediaMetadataRetriever retriever = new MediaMetadataRetriever();
         retriever.setDataSource(inputVideo);
         int durationMs = Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION));
@@ -400,6 +400,14 @@ public class VideoUtil {
             return format.getInteger(MediaFormat.KEY_MAX_INPUT_SIZE);
         } else {
             return 100 * 1000;
+        }
+    }
+
+    static int getAudioBitrate(MediaFormat format) {
+        if (format.containsKey(MediaFormat.KEY_BIT_RATE)) {
+            return format.getInteger(MediaFormat.KEY_BIT_RATE);
+        } else {
+            return VideoProcessor.DEFAULT_AAC_BITRATE;
         }
     }
 
