@@ -358,7 +358,7 @@ public class MainActivity extends AppCompatActivity {
                     startActivity(intent);
                 } catch (Exception e) {
                     e.printStackTrace();
-                    Toast.makeText(getApplicationContext(),"process error!",Toast.LENGTH_SHORT).show();
+                    postError();
                 }
                 progressDialog.dismiss();
             }
@@ -403,7 +403,7 @@ public class MainActivity extends AppCompatActivity {
                     startActivity(intent);
                 } catch (Exception e) {
                     e.printStackTrace();
-                    Toast.makeText(getApplicationContext(),"process error!",Toast.LENGTH_SHORT).show();
+                    postError();
                 }
                 progressDialog.dismiss();
             }
@@ -438,7 +438,7 @@ public class MainActivity extends AppCompatActivity {
                     startActivity(intent);
                 } catch (Exception e) {
                     e.printStackTrace();
-                    Toast.makeText(getApplicationContext(),"process error!",Toast.LENGTH_SHORT).show();
+                    postError();
                 }
                 progressDialog.dismiss();
             }
@@ -474,7 +474,7 @@ public class MainActivity extends AppCompatActivity {
                     startActivity(intent);
                 } catch (Exception e) {
                     e.printStackTrace();
-                    Toast.makeText(getApplicationContext(),"process error!",Toast.LENGTH_SHORT).show();
+                    postError();
                 }
                 progressDialog.dismiss();
             }
@@ -511,7 +511,7 @@ public class MainActivity extends AppCompatActivity {
                     startActivity(intent);
                 } catch (Exception e) {
                     e.printStackTrace();
-                    Toast.makeText(getApplicationContext(),"process error!",Toast.LENGTH_SHORT).show();
+                    postError();
                 }
                 progressDialog.dismiss();
             }
@@ -547,7 +547,7 @@ public class MainActivity extends AppCompatActivity {
                     startActivity(intent);
                 } catch (Exception e) {
                     e.printStackTrace();
-                    Toast.makeText(getApplicationContext(),"process error!",Toast.LENGTH_SHORT).show();
+                    postError();
                 }
                 progressDialog.dismiss();
             }
@@ -648,6 +648,14 @@ public class MainActivity extends AppCompatActivity {
         return null;
     }
 
+    private void postError() {
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                Toast.makeText(getApplicationContext(), "process error!", Toast.LENGTH_SHORT).show();
+            }
+        });
+    }
 
     /**
      * @param uri The Uri to check.
@@ -678,6 +686,5 @@ public class MainActivity extends AppCompatActivity {
         FileChannel from = new FileInputStream(assetFileDescriptor.getFileDescriptor()).getChannel();
         FileChannel to = new FileOutputStream(path).getChannel();
         from.transferTo(assetFileDescriptor.getStartOffset(), assetFileDescriptor.getLength(), to);
-
     }
 }

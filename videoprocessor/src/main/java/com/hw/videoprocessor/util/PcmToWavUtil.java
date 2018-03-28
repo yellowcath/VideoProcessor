@@ -14,23 +14,25 @@ import java.io.IOException;
 public class PcmToWavUtil {
     private int mBufferSize;  //缓存的音频大小
     private int mSampleRate = 8000;// 8000|16000
-    private int mChannel = AudioFormat.CHANNEL_IN_STEREO;   //立体声
+    private int mChannelConfig = AudioFormat.CHANNEL_IN_STEREO;   //立体声
+    private int mChannelCount = 2;
     private int mEncoding = AudioFormat.ENCODING_PCM_16BIT;
 
     public PcmToWavUtil() {
-        this.mBufferSize = AudioRecord.getMinBufferSize(mSampleRate, mChannel, mEncoding);
+        this.mBufferSize = AudioRecord.getMinBufferSize(mSampleRate, mChannelConfig, mEncoding);
     }
 
     /**
      * @param sampleRate sample rate、采样率
-     * @param channel    channel、声道
+     * @param channelConfig    channel、声道
      * @param encoding   Audio data format、音频格式
      */
-    public PcmToWavUtil(int sampleRate, int channel, int encoding) {
+    public PcmToWavUtil(int sampleRate, int channelConfig,int channelCount, int encoding) {
         this.mSampleRate = sampleRate;
-        this.mChannel = channel;
+        this.mChannelConfig = channelConfig;
+        this.mChannelCount = channelCount;
         this.mEncoding = encoding;
-        this.mBufferSize = AudioRecord.getMinBufferSize(mSampleRate, mChannel, mEncoding);
+        this.mBufferSize = AudioRecord.getMinBufferSize(mSampleRate, mChannelConfig, mEncoding);
     }
 
     /**
@@ -45,7 +47,7 @@ public class PcmToWavUtil {
         long totalAudioLen;
         long totalDataLen;
         long longSampleRate = mSampleRate;
-        int channels = 2;
+        int channels = mChannelCount;
         long byteRate = 16 * mSampleRate * channels / 8;
         byte[] data = new byte[mBufferSize];
         try {

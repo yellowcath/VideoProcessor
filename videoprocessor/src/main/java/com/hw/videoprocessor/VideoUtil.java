@@ -129,7 +129,7 @@ public class VideoUtil {
         mediaMuxer.release();
     }
 
-    static int selectTrack(MediaExtractor extractor, boolean audio) {
+    public static int selectTrack(MediaExtractor extractor, boolean audio) {
         int numTracks = extractor.getTrackCount();
         for (int i = 0; i < numTracks; i++) {
             MediaFormat format = extractor.getTrackFormat(i);
