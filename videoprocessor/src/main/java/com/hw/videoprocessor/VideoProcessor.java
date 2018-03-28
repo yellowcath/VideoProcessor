@@ -34,7 +34,7 @@ public class VideoProcessor {
     final static String TAG = "VideoProcessor";
     final static String MIME_TYPE = "video/avc";
 
-    public final static int DEFAULT_FRAME_RATE = 25;
+    public static int DEFAULT_FRAME_RATE = 20;
     /**
      * 只有关键帧距为0的才能方便做逆序
      */
@@ -168,11 +168,13 @@ public class VideoProcessor {
 
         MediaCodec decoder = null;
         MediaCodec encoder = null;
+        MediaFormat inputFormat = extractor.getTrackFormat(videoIndex);
         //初始化编码器
+        int frameRate = inputFormat.containsKey(MediaFormat.KEY_FRAME_RATE) ? inputFormat.getInteger(inputFormat.KEY_FRAME_RATE) : DEFAULT_FRAME_RATE;
         MediaFormat outputFormat = MediaFormat.createVideoFormat(MIME_TYPE, resultWidth, resultHeight);
         outputFormat.setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface);
         outputFormat.setInteger(MediaFormat.KEY_BIT_RATE, bitrate);
-        outputFormat.setInteger(MediaFormat.KEY_FRAME_RATE, DEFAULT_FRAME_RATE);
+        outputFormat.setInteger(MediaFormat.KEY_FRAME_RATE, frameRate);
         outputFormat.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, iFrameInterval);
 
         encoder = MediaCodec.createEncoderByType(MIME_TYPE);
@@ -182,7 +184,6 @@ public class VideoProcessor {
         inputSurface.makeCurrent();
 
         //初始化解码器
-        MediaFormat inputFormat = extractor.getTrackFormat(videoIndex);
         decoder = MediaCodec.createDecoderByType(inputFormat.getString(MediaFormat.KEY_MIME));
         inputFormat.setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface);
         OutputSurface outputSurface = new OutputSurface();
@@ -463,7 +464,7 @@ public class VideoProcessor {
         if (oriChannelCount == 2) {
             channelConfig = AudioFormat.CHANNEL_IN_STEREO;
         }
-        new PcmToWavUtil(sampleRate, channelConfig,oriChannelCount, AudioFormat.ENCODING_PCM_16BIT).pcmToWav(pcmFile.getAbsolutePath(), wavFile.getAbsolutePath());
+        new PcmToWavUtil(sampleRate, channelConfig, oriChannelCount, AudioFormat.ENCODING_PCM_16BIT).pcmToWav(pcmFile.getAbsolutePath(), wavFile.getAbsolutePath());
         //开始处理pcm
         CL.i(TAG, "start process pcm speed");
         File outFile = new File(context.getCacheDir(), pcmFile.getName() + ".outpcm");
@@ -672,7 +673,7 @@ public class VideoProcessor {
             retriever.setDataSource(videoInput);
             videoDurationMs = Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION));
         } else {
-            videoDurationMs = (endTimeUs - startTimeUs)/1000;
+            videoDurationMs = (endTimeUs - startTimeUs) / 1000;
         }
         MediaMetadataRetriever retriever = new MediaMetadataRetriever();
         retriever.setDataSource(aacInput);
@@ -721,7 +722,7 @@ public class VideoProcessor {
             channelConfig = AudioFormat.CHANNEL_IN_STEREO;
         }
         //PCM转WAV
-        new PcmToWavUtil(sampleRate, channelConfig,oriChannelCount, AudioFormat.ENCODING_PCM_16BIT).pcmToWav(adjustedPcm.getAbsolutePath(), wavFile.getAbsolutePath());
+        new PcmToWavUtil(sampleRate, channelConfig, oriChannelCount, AudioFormat.ENCODING_PCM_16BIT).pcmToWav(adjustedPcm.getAbsolutePath(), wavFile.getAbsolutePath());
         tempAacFile.delete();
         //重新写入音频
         final int TIMEOUT_US = 2500;
