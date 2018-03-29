@@ -246,6 +246,8 @@ public class VideoUtil {
             boolean decoderDone = false;
             boolean inputDone = false;
             boolean signalEncodeEnd = false;
+            int encodeTryAgainCount = 0;
+
             while (!decoderDone || !encoderDone) {
                 //还有帧数据，输入解码器
                 if (!inputDone) {
@@ -347,6 +349,17 @@ public class VideoUtil {
                 while (encoderOutputAvailable) {
                     int outputBufferIndex = encoder.dequeueOutputBuffer(info, TIMEOUT_USEC);
                     CL.i("encode outputBufferIndex = " + outputBufferIndex);
+                    if(signalEncodeEnd && outputBufferIndex == MediaCodec.INFO_TRY_AGAIN_LATER){
+                        encodeTryAgainCount ++;
+                        if(encodeTryAgainCount > 10){
+                            //三星S8上出现signalEndOfInputStream之后一直tryAgain的问题
+                            encoderDone = true;
+                            CL.e("INFO_TRY_AGAIN_LATER 10 times,force End!");
+                            break;
+                        }
+                    }else{
+                        encodeTryAgainCount = 0;
+                    }
                     if (outputBufferIndex == MediaCodec.INFO_TRY_AGAIN_LATER) {
                         break;
                     } else if (outputBufferIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
@@ -442,5 +455,17 @@ public class VideoUtil {
         int oriBitrate = Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_BITRATE));
         retriever.release();
         return (int) (bitrateMultiple * oriBitrate);
+    }
+
+    public static void seekToLastFrame(MediaExtractor extractor,int trackIndex,int durationMs){
+        int seekToDuration = durationMs * 1000;
+        if(extractor.getSampleTrackIndex()!=trackIndex) {
+            extractor.selectTrack(trackIndex);
+        }
+        extractor.seekTo(seekToDuration, MediaExtractor.SEEK_TO_PREVIOUS_SYNC);
+        while(seekToDuration>0 && extractor.getSampleTrackIndex()!=trackIndex){
+            seekToDuration -= 10000;
+            extractor.seekTo(seekToDuration, MediaExtractor.SEEK_TO_PREVIOUS_SYNC);
+        }
     }
 }

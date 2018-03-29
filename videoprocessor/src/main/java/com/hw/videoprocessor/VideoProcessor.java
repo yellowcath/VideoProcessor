@@ -203,6 +203,7 @@ public class VideoProcessor {
             boolean inputDone = false;
             boolean signalEncodeEnd = false;
             int videoTrackIndex = -5;
+            int encodeTryAgainCount = 0;
             while (!decoderDone || !encoderDone) {
                 //还有帧数据，输入解码器
                 if (!inputDone) {
@@ -307,6 +308,17 @@ public class VideoProcessor {
                 while (encoderOutputAvailable) {
                     int outputBufferIndex = encoder.dequeueOutputBuffer(info, TIMEOUT_USEC);
                     CL.it(TAG, "encode outputBufferIndex = " + outputBufferIndex);
+                    if(signalEncodeEnd && outputBufferIndex == MediaCodec.INFO_TRY_AGAIN_LATER){
+                        encodeTryAgainCount ++;
+                        if(encodeTryAgainCount > 10){
+                            //三星S8上出现signalEndOfInputStream之后一直tryAgain的问题
+                            encoderDone = true;
+                            CL.et(TAG, "INFO_TRY_AGAIN_LATER 10 times,force End!");
+                            break;
+                        }
+                    }else{
+                        encodeTryAgainCount = 0;
+                    }
                     if (outputBufferIndex == MediaCodec.INFO_TRY_AGAIN_LATER) {
                         break;
                     } else if (outputBufferIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
@@ -594,8 +606,7 @@ public class VideoProcessor {
         mediaMuxer.start();
         int maxBufferSize = videoTrackFormat.getInteger(MediaFormat.KEY_MAX_INPUT_SIZE);
         ByteBuffer buffer = ByteBuffer.allocateDirect(maxBufferSize);
-
-        extractor.seekTo(durationMs * 1000 + MIN_FRAME_INTERVAL, MediaExtractor.SEEK_TO_PREVIOUS_SYNC);
+        VideoUtil.seekToLastFrame(extractor,videoTrackIndex,durationMs);
         long lastFrameTimeUs = -1;
         MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
         try {
@@ -622,7 +633,7 @@ public class VideoProcessor {
             //写音频帧
             extractor.unselectTrack(videoTrackIndex);
             extractor.selectTrack(audioTrackIndex);
-            extractor.seekTo(durationMs * 1000 + MIN_FRAME_INTERVAL, MediaExtractor.SEEK_TO_PREVIOUS_SYNC);
+            VideoUtil.seekToLastFrame(extractor,audioTrackIndex,durationMs);
             lastFrameTimeUs = -1;
             while (true) {
                 long sampleTime = extractor.getSampleTime();
