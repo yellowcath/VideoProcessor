@@ -12,6 +12,7 @@ import android.media.MediaMuxer;
 import android.support.annotation.IntRange;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
+import android.util.Pair;
 import android.view.Surface;
 import com.hw.videoprocessor.util.AudioUtil;
 import com.hw.videoprocessor.util.CL;
@@ -692,49 +693,47 @@ public class VideoProcessor {
         retriever.release();
         //音频转化为PCM
         AudioUtil.decodeToPCM(videoInput, videoPcmFile.getAbsolutePath(), startTimeUs, endTimeUs);
-        File tempAacFile = new File(cacheDir, "aactemp_" + System.currentTimeMillis() + ".pcm");
-        AudioUtil.decodeToPCM(aacInput, tempAacFile.getAbsolutePath(), 0,
+        AudioUtil.decodeToPCM(aacInput, aacPcmFile.getAbsolutePath(), 0,
                 aacDurationMs > videoDurationMs ? videoDurationMs * 1000 : aacDurationMs * 1000);
-        boolean isVideoStereo = AudioUtil.isStereo(videoInput);
-        boolean isAacStereo = AudioUtil.isStereo(aacInput);
-
-        if (isAacStereo && isVideoStereo) {
-            aacPcmFile = tempAacFile;
-        } else if (isAacStereo) {
-            //立体声转为单声道
-            AudioUtil.stereoToMono(tempAacFile.getAbsolutePath(), aacPcmFile.getAbsolutePath());
-        } else if (isVideoStereo) {
-            File tempVideoPacFile = new File(cacheDir, "videotemp_" + System.currentTimeMillis() + ".pcm");
-            AudioUtil.copyFile(videoPcmFile.getAbsolutePath(), tempVideoPacFile.getAbsolutePath());
-            AudioUtil.stereoToMono(tempVideoPacFile.getAbsolutePath(), videoPcmFile.getAbsolutePath());
-            tempVideoPacFile.delete();
-        } else {
-            aacPcmFile = tempAacFile;
-        }
-        //检查音频长度是否需要重复填充
-        if (AUDIO_MIX_REPEAT) {
-            aacPcmFile = AudioUtil.checkAndFillPcm(aacPcmFile, aacDurationMs, videoDurationMs);
-        }
-        //混合并调整音量
-        File adjustedPcm = new File(cacheDir, "adjusted_" + System.currentTimeMillis() + ".pcm");
-        AudioUtil.mixPcm(videoPcmFile.getAbsolutePath(), aacPcmFile.getAbsolutePath(), adjustedPcm.getAbsolutePath()
-                , videoVolumn, aacVolumn);
 
         MediaExtractor oriExtrator = new MediaExtractor();
         oriExtrator.setDataSource(videoInput);
         int oriAudioIndex = VideoUtil.selectTrack(oriExtrator, true);
         MediaFormat oriAudioFormat = oriExtrator.getTrackFormat(oriAudioIndex);
-        int oriChannelCount = oriAudioFormat.getInteger(MediaFormat.KEY_CHANNEL_COUNT);
         int sampleRate = oriAudioFormat.getInteger(MediaFormat.KEY_SAMPLE_RATE);
+
+        MediaExtractor aacExtractor = new MediaExtractor();
+        aacExtractor.setDataSource(aacInput);
+        int aacAudioIndex = VideoUtil.selectTrack(aacExtractor,true);
+        //检查两段音频格式是否一致,不一致则统一转换为单声道+44100
+        Pair<Integer, Integer> resultPair = AudioUtil.checkAndAdjustAudioFormat(videoPcmFile.getAbsolutePath(),
+                aacPcmFile.getAbsolutePath(),
+                oriExtrator.getTrackFormat(oriAudioIndex),
+                aacExtractor.getTrackFormat(aacAudioIndex)
+        );
+        int adjustedChannelCount = resultPair.first;
+        int adjustedSampleRate = resultPair.second;
+        aacExtractor.release();
+
+        //检查音频长度是否需要重复填充
+        if (AUDIO_MIX_REPEAT) {
+            aacPcmFile = AudioUtil.checkAndFillPcm(aacPcmFile, aacDurationMs, videoDurationMs);
+        }
+
+        //混合并调整音量
+        File adjustedPcm = new File(cacheDir, "adjusted_" + System.currentTimeMillis() + ".pcm");
+        AudioUtil.mixPcm(videoPcmFile.getAbsolutePath(), aacPcmFile.getAbsolutePath(), adjustedPcm.getAbsolutePath()
+                , videoVolumn, aacVolumn);
+
         File wavFile = new File(context.getCacheDir(), adjustedPcm.getName() + ".wav");
 
         int channelConfig = AudioFormat.CHANNEL_IN_MONO;
-        if (oriChannelCount == 2) {
+        if (adjustedChannelCount == 2) {
             channelConfig = AudioFormat.CHANNEL_IN_STEREO;
         }
         //PCM转WAV
-        new PcmToWavUtil(sampleRate, channelConfig, oriChannelCount, AudioFormat.ENCODING_PCM_16BIT).pcmToWav(adjustedPcm.getAbsolutePath(), wavFile.getAbsolutePath());
-        tempAacFile.delete();
+        new PcmToWavUtil(adjustedSampleRate, channelConfig, adjustedChannelCount, AudioFormat.ENCODING_PCM_16BIT).pcmToWav(adjustedPcm.getAbsolutePath(), wavFile.getAbsolutePath());
+
         //重新写入音频
         final int TIMEOUT_US = 2500;
         MediaMuxer mediaMuxer = new MediaMuxer(output, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4);

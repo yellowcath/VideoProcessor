@@ -4,7 +4,9 @@ import android.media.MediaCodec;
 import android.media.MediaExtractor;
 import android.media.MediaFormat;
 import android.support.annotation.IntRange;
+import android.util.Pair;
 import com.hw.videoprocessor.VideoUtil;
+import com.hw.videoprocessor.jssrc.SSRC;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -52,13 +54,13 @@ public class AudioUtil {
     /**
      * @param volumn
      * @return 0~50 -> 0~1
-     * 50~100 ->1~40
+     * 50~100 ->1~30
      */
     private static float normalizeVolumn(@IntRange(from = 0, to = 100) int volumn) {
         if (volumn <= 50) {
             return volumn / 50f;
         } else {
-            return (volumn - 50) / 50f * 39 + 1;
+            return (volumn - 50) / 50f * 29 + 1;
         }
     }
 
@@ -111,15 +113,27 @@ public class AudioUtil {
     }
 
     public static void stereoToMono(String from, String to) throws IOException {
+        stereoToMonoSimple(from, to, 2);
+    }
+
+    /**
+     * 多声道转单声道,只取第一条声道
+     *
+     * @param from
+     * @param to
+     * @param srcChannelCount
+     * @throws IOException
+     */
+    public static void stereoToMonoSimple(String from, String to, @IntRange(from = 2) int srcChannelCount) throws IOException {
         FileInputStream is = new FileInputStream(from);
         FileOutputStream os = new FileOutputStream(to);
-        byte[] buffer1 = new byte[2048];
+        byte[] buffer1 = new byte[1024 * srcChannelCount];
         byte[] buffer2 = new byte[1024];
 
         while (is.read(buffer1) != -1) {
             for (int i = 0; i < buffer2.length; i += 2) {
-                buffer2[i] = buffer1[2 * i];
-                buffer2[i + 1] = buffer1[2 * i + 1];
+                buffer2[i] = buffer1[srcChannelCount * i];
+                buffer2[i + 1] = buffer1[srcChannelCount * i + 1];
             }
             os.write(buffer2);
         }
@@ -153,7 +167,70 @@ public class AudioUtil {
         return format.getInteger(MediaFormat.KEY_CHANNEL_COUNT) > 1;
     }
 
-    public static File checkAndFillPcm(File aacPcmFile,int pcmDuration, int fileToDuration) {
+    /**
+     * 检查两段音频格式是否一致,不一致则统一转换为单声道+44100
+     */
+    public static Pair<Integer, Integer> checkAndAdjustAudioFormat(String pcm1, String pcm2, MediaFormat format1, MediaFormat format2) {
+        final int DEFAULT_SAMPLE_RATE = 44100;
+        int channelCount1 = format1.containsKey(MediaFormat.KEY_CHANNEL_COUNT) ? format1.getInteger(MediaFormat.KEY_CHANNEL_COUNT) : 1;
+        int channelCount2 = format2.containsKey(MediaFormat.KEY_CHANNEL_COUNT) ? format2.getInteger(MediaFormat.KEY_CHANNEL_COUNT) : 1;
+        int sampleRate1 = format1.containsKey(MediaFormat.KEY_SAMPLE_RATE) ? format1.getInteger(MediaFormat.KEY_SAMPLE_RATE) : DEFAULT_SAMPLE_RATE;
+        int sampleRate2 = format2.containsKey(MediaFormat.KEY_SAMPLE_RATE) ? format2.getInteger(MediaFormat.KEY_SAMPLE_RATE) : DEFAULT_SAMPLE_RATE;
+
+        if (channelCount1 == channelCount2 && sampleRate1 == sampleRate2 && channelCount1 <= 2) {
+            return new Pair<>(channelCount1, sampleRate1);
+        }
+        File temp1 = new File(pcm1 + ".temp");
+        File temp2 = new File(pcm2 + ".temp");
+        int channelCount = channelCount1;
+        int sampleRate = sampleRate1;
+        //声道不一样，全部转换为单声道
+        try {
+            if (channelCount1 != channelCount2 || channelCount1 > 2 || channelCount2 > 2) {
+                if (channelCount1 > 1) {
+                    stereoToMonoSimple(pcm1, temp1.getAbsolutePath(), channelCount1);
+                    File file = new File(pcm1);
+                    file.delete();
+                    temp1.renameTo(file);
+                    channelCount1 = 1;
+                }
+                if (channelCount2 > 1) {
+                    stereoToMonoSimple(pcm2, temp2.getAbsolutePath(), channelCount2);
+                    File file = new File(pcm2);
+                    file.delete();
+                    temp2.renameTo(file);
+                    channelCount2 = 1;
+                }
+                channelCount = 1;
+            } else {
+                channelCount = channelCount1;
+            }
+            if (sampleRate1 != sampleRate2) {
+                sampleRate = DEFAULT_SAMPLE_RATE;
+                if (sampleRate1 != DEFAULT_SAMPLE_RATE) {
+                    reSamplePcm(pcm1, temp1.getAbsolutePath(), sampleRate1, DEFAULT_SAMPLE_RATE, channelCount1);
+                    File file = new File(pcm1);
+                    file.delete();
+                    temp1.renameTo(file);
+                }
+                if (sampleRate2 != DEFAULT_SAMPLE_RATE) {
+                    reSamplePcm(pcm2, temp2.getAbsolutePath(), sampleRate2, DEFAULT_SAMPLE_RATE, channelCount2);
+                    File file = new File(pcm2);
+                    file.delete();
+                    temp2.renameTo(file);
+                }
+            }
+            return new Pair<>(channelCount, sampleRate);
+        } catch (Exception e) {
+            e.printStackTrace();
+            return new Pair<>(channelCount, sampleRate);
+        } finally {
+            temp1.delete();
+            temp2.exists();
+        }
+    }
+
+    public static File checkAndFillPcm(File aacPcmFile, int pcmDuration, int fileToDuration) {
         if (pcmDuration >= fileToDuration) {
             return aacPcmFile;
         }
@@ -303,5 +380,20 @@ public class AudioUtil {
             decoder.stop();
             decoder.release();
         }
+    }
+
+    public static boolean reSamplePcm(String srcPath, String dstPath, int srcSampleRate, int dstSampleRate, int srcChannelCount) {
+        FileInputStream fis = null;
+        FileOutputStream fos = null;
+        try {
+            fis = new FileInputStream(srcPath);
+            fos = new FileOutputStream(dstPath);
+            new SSRC(fis, fos, srcSampleRate, dstSampleRate, 2, 2, srcChannelCount, (int) new File(srcPath).length(), 0, 0, true);
+        } catch (IOException e) {
+            CL.e(e);
+            e.printStackTrace();
+        }
+
+        return true;
     }
 }

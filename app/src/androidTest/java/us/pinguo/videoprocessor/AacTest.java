@@ -1,7 +1,13 @@
 package us.pinguo.videoprocessor;
 
+import android.Manifest;
+import android.media.MediaExtractor;
+import android.media.MediaFormat;
+import android.support.test.rule.GrantPermissionRule;
 import android.support.test.runner.AndroidJUnit4;
+import com.hw.videoprocessor.VideoUtil;
 import com.hw.videoprocessor.util.AudioUtil;
+import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
@@ -18,13 +24,39 @@ import java.nio.channels.FileChannel;
  */
 @RunWith(AndroidJUnit4.class)
 public class AacTest {
-    @Test
-    public void test() throws Exception {
-        File pcmFile = new File("/mnt/sdcard/t1.pcm");
-        AudioUtil.copyFile(pcmFile.getAbsolutePath(),"/mnt/sdcard/t2.pcm");
-        File filed = checkAndFillPcm(3564,new File("/mnt/sdcard/t2.pcm"),10000);
-        AudioUtil.copyFile(filed.getAbsolutePath(),"/mnt/sdcard/filed.pcm");
+    //    @Test
+//    public void testFill() throws Exception {
+//        File pcmFile = new File("/mnt/sdcard/t1.pcm");
+//        AudioUtil.copyFile(pcmFile.getAbsolutePath(),"/mnt/sdcard/t2.pcm");
+//        File filed = checkAndFillPcm(3564,new File("/mnt/sdcard/t2.pcm"),10000);
+//        AudioUtil.copyFile(filed.getAbsolutePath(),"/mnt/sdcard/filed.pcm");
+//    }
+    @Rule
+    public GrantPermissionRule permissionRule = GrantPermissionRule.grant(Manifest.permission.WRITE_EXTERNAL_STORAGE);
 
+    @Test
+    public void testResample() throws Exception {
+        File aacFile = new File("/mnt/sdcard/6c.aac");
+        MediaExtractor extractor = new MediaExtractor();
+        extractor.setDataSource(aacFile.getAbsolutePath());
+        int trackIndex = VideoUtil.selectTrack(extractor, true);
+        MediaFormat trackFormat = extractor.getTrackFormat(trackIndex);
+        int sampleRate = trackFormat.getInteger(MediaFormat.KEY_SAMPLE_RATE);
+        int channelCount = trackFormat.getInteger(MediaFormat.KEY_CHANNEL_COUNT);
+
+        File cacheDir = new File("/mnt/sdcard/test");
+        cacheDir.mkdirs();
+        File pcmFile = new File(cacheDir, "t.pcm");
+        File pcmFile2 = new File(cacheDir, "t2.pcm");
+        File pcmFile3 = new File(cacheDir, "t3.pcm");
+
+        pcmFile.createNewFile();
+
+        AudioUtil.decodeToPCM(aacFile.getAbsolutePath(), pcmFile.getAbsolutePath(), null, null);
+        AudioUtil.stereoToMonoSimple(pcmFile.getAbsolutePath(), pcmFile2.getAbsolutePath(), channelCount);
+        AudioUtil.copyFile(pcmFile2.getAbsolutePath(), "/mnt/sdcard/mo.pcm");
+        AudioUtil.reSamplePcm(pcmFile2.getAbsolutePath(), pcmFile3.getAbsolutePath(), sampleRate, 44100, 1);
+        AudioUtil.copyFile(pcmFile3.getAbsolutePath(), "/mnt/sdcard/re.pcm");
     }
 
     public static File checkAndFillPcm(int aacDuration, File aacPcmFile, int videoDuration) {
