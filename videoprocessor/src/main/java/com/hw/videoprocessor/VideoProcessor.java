@@ -147,19 +147,22 @@ public class VideoProcessor {
         int videoIndex = VideoUtil.selectTrack(extractor, false);
         int audioIndex = VideoUtil.selectTrack(extractor, true);
         MediaMuxer mediaMuxer = new MediaMuxer(output, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4);
-        MediaFormat audioTrackFormat = extractor.getTrackFormat(audioIndex);
+        int muxerAudioTrackIndex = 0;
+        if (audioIndex >= 0) {
+            MediaFormat audioTrackFormat = extractor.getTrackFormat(audioIndex);
 
-        if (startTimeMs != null || endTimeMs != null || speed != null) {
-            long durationUs = audioTrackFormat.getLong(MediaFormat.KEY_DURATION);
-            if (startTimeMs != null && endTimeMs != null) {
-                durationUs = (endTimeMs - startTimeMs) * 1000;
+            if (startTimeMs != null || endTimeMs != null || speed != null) {
+                long durationUs = audioTrackFormat.getLong(MediaFormat.KEY_DURATION);
+                if (startTimeMs != null && endTimeMs != null) {
+                    durationUs = (endTimeMs - startTimeMs) * 1000;
+                }
+                if (speed != null) {
+                    durationUs /= speed;
+                }
+                audioTrackFormat.setLong(MediaFormat.KEY_DURATION, durationUs);
             }
-            if (speed != null) {
-                durationUs /= speed;
-            }
-            audioTrackFormat.setLong(MediaFormat.KEY_DURATION, durationUs);
+            muxerAudioTrackIndex = mediaMuxer.addTrack(audioTrackFormat);
         }
-        int muxerAudioTrackIndex = mediaMuxer.addTrack(audioTrackFormat);
         extractor.selectTrack(videoIndex);
         if (startTimeMs != null) {
             extractor.seekTo(startTimeMs * 1000, MediaExtractor.SEEK_TO_PREVIOUS_SYNC);
@@ -353,15 +356,17 @@ public class VideoProcessor {
             encoder.stop();
             decoder.stop();
 
-            //处理音频
-            extractor.unselectTrack(videoIndex);
-            //音频暂不支持变速
-            Integer startTimeUs = startTimeMs == null ? null : (int) videoStartTimeUs;
-            Integer endTimeUs = endTimeMs == null ? null : endTimeMs * 1000;
-            if (speed != null) {
-                writeAudioTrack(context, extractor, mediaMuxer, muxerAudioTrackIndex, startTimeUs, endTimeUs, speed);
-            } else {
-                VideoUtil.writeAudioTrack(extractor, mediaMuxer, muxerAudioTrackIndex, startTimeUs, endTimeUs);
+            if (audioIndex >= 0) {
+                //处理音频
+                extractor.unselectTrack(videoIndex);
+                //音频暂不支持变速
+                Integer startTimeUs = startTimeMs == null ? null : (int) videoStartTimeUs;
+                Integer endTimeUs = endTimeMs == null ? null : endTimeMs * 1000;
+                if (speed != null) {
+                    writeAudioTrack(context, extractor, mediaMuxer, muxerAudioTrackIndex, startTimeUs, endTimeUs, speed);
+                } else {
+                    VideoUtil.writeAudioTrack(extractor, mediaMuxer, muxerAudioTrackIndex, startTimeUs, endTimeUs);
+                }
             }
         } catch (Exception e) {
             CL.e(e);
@@ -863,7 +868,7 @@ public class VideoProcessor {
                 }
             }
             //重新将视频写入
-            if(oriAudioIndex>=0) {
+            if (oriAudioIndex >= 0) {
                 oriExtrator.unselectTrack(oriAudioIndex);
             }
             oriExtrator.selectTrack(oriVideoIndex);
