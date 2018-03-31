@@ -664,13 +664,13 @@ public class VideoProcessor {
      * 不需要改变音频速率的情况下，直接读写就可
      * 只支持16bit音频
      *
-     * @param videoVolumn 0静音，50表示原音
-     * @param aacVolumn   0静音，50表示原音
+     * @param videoVolume 0静音，50表示原音
+     * @param aacVolume   0静音，50表示原音
      */
     public static void mixAudioTrack(Context context, String videoInput, String aacInput, String output,
                                      Integer startTimeMs, Integer endTimeMs,
-                                     @IntRange(from = 0, to = 100) int videoVolumn,
-                                     @IntRange(from = 0, to = 100) int aacVolumn) throws IOException {
+                                     @IntRange(from = 0, to = 100) int videoVolume,
+                                     @IntRange(from = 0, to = 100) int aacVolume) throws IOException {
         File cacheDir = new File(context.getCacheDir(), "pcm");
         cacheDir.mkdir();
 
@@ -691,57 +691,98 @@ public class VideoProcessor {
         retriever.setDataSource(aacInput);
         int aacDurationMs = Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION));
         retriever.release();
-        //音频转化为PCM
-        AudioUtil.decodeToPCM(videoInput, videoPcmFile.getAbsolutePath(), startTimeUs, endTimeUs);
-        AudioUtil.decodeToPCM(aacInput, aacPcmFile.getAbsolutePath(), 0,
-                aacDurationMs > videoDurationMs ? videoDurationMs * 1000 : aacDurationMs * 1000);
 
         MediaExtractor oriExtrator = new MediaExtractor();
         oriExtrator.setDataSource(videoInput);
         int oriAudioIndex = VideoUtil.selectTrack(oriExtrator, true);
-        MediaFormat oriAudioFormat = oriExtrator.getTrackFormat(oriAudioIndex);
-        int sampleRate = oriAudioFormat.getInteger(MediaFormat.KEY_SAMPLE_RATE);
-
         MediaExtractor aacExtractor = new MediaExtractor();
         aacExtractor.setDataSource(aacInput);
         int aacAudioIndex = VideoUtil.selectTrack(aacExtractor, true);
-        //检查两段音频格式是否一致,不一致则统一转换为单声道+44100
-        Pair<Integer, Integer> resultPair = AudioUtil.checkAndAdjustAudioFormat(videoPcmFile.getAbsolutePath(),
-                aacPcmFile.getAbsolutePath(),
-                oriExtrator.getTrackFormat(oriAudioIndex),
-                aacExtractor.getTrackFormat(aacAudioIndex)
-        );
-        int adjustedChannelCount = resultPair.first;
-        int adjustedSampleRate = resultPair.second;
-        aacExtractor.release();
-
-        //检查音频长度是否需要重复填充
-        if (AUDIO_MIX_REPEAT) {
-            aacPcmFile = AudioUtil.checkAndFillPcm(aacPcmFile, aacDurationMs, videoDurationMs);
-        }
-
-        //混合并调整音量
-        File adjustedPcm = new File(cacheDir, "adjusted_" + System.currentTimeMillis() + ".pcm");
-        AudioUtil.mixPcm(videoPcmFile.getAbsolutePath(), aacPcmFile.getAbsolutePath(), adjustedPcm.getAbsolutePath()
-                , videoVolumn, aacVolumn);
-
-        File wavFile = new File(context.getCacheDir(), adjustedPcm.getName() + ".wav");
-
-        int channelConfig = AudioFormat.CHANNEL_IN_MONO;
-        if (adjustedChannelCount == 2) {
-            channelConfig = AudioFormat.CHANNEL_IN_STEREO;
-        }
-        //PCM转WAV
-        new PcmToWavUtil(adjustedSampleRate, channelConfig, adjustedChannelCount, AudioFormat.ENCODING_PCM_16BIT).pcmToWav(adjustedPcm.getAbsolutePath(), wavFile.getAbsolutePath());
-
-        //重新写入音频
+        File wavFile;
+        int sampleRate;
+        File adjustedPcm;
+        int channelCount;
+        int audioBitrate;
         final int TIMEOUT_US = 2500;
         MediaMuxer mediaMuxer = new MediaMuxer(output, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4);
         //重新将速率变化过后的pcm写入
         int oriVideoIndex = VideoUtil.selectTrack(oriExtrator, false);
         MediaFormat oriVideoFormat = oriExtrator.getTrackFormat(oriVideoIndex);
         int muxerVideoIndex = mediaMuxer.addTrack(oriVideoFormat);
-        int muxerAudioIndex = mediaMuxer.addTrack(oriAudioFormat);
+        int muxerAudioIndex;
+        if (oriAudioIndex >= 0) {
+            //音频转化为PCM
+            AudioUtil.decodeToPCM(videoInput, videoPcmFile.getAbsolutePath(), startTimeUs, endTimeUs);
+            AudioUtil.decodeToPCM(aacInput, aacPcmFile.getAbsolutePath(), 0,
+                    aacDurationMs > videoDurationMs ? videoDurationMs * 1000 : aacDurationMs * 1000);
+
+            MediaFormat oriAudioFormat = oriExtrator.getTrackFormat(oriAudioIndex);
+            sampleRate = oriAudioFormat.getInteger(MediaFormat.KEY_SAMPLE_RATE);
+            audioBitrate = VideoUtil.getAudioBitrate(oriAudioFormat);
+            muxerAudioIndex = mediaMuxer.addTrack(oriAudioFormat);
+
+            //检查两段音频格式是否一致,不一致则统一转换为单声道+44100
+            Pair<Integer, Integer> resultPair = AudioUtil.checkAndAdjustAudioFormat(videoPcmFile.getAbsolutePath(),
+                    aacPcmFile.getAbsolutePath(),
+                    oriExtrator.getTrackFormat(oriAudioIndex),
+                    aacExtractor.getTrackFormat(aacAudioIndex)
+            );
+            channelCount = resultPair.first;
+            int adjustedSampleRate = resultPair.second;
+            aacExtractor.release();
+
+            //检查音频长度是否需要重复填充
+            if (AUDIO_MIX_REPEAT) {
+                aacPcmFile = AudioUtil.checkAndFillPcm(aacPcmFile, aacDurationMs, videoDurationMs);
+            }
+
+            //混合并调整音量
+            adjustedPcm = new File(cacheDir, "adjusted_" + System.currentTimeMillis() + ".pcm");
+            AudioUtil.mixPcm(videoPcmFile.getAbsolutePath(), aacPcmFile.getAbsolutePath(), adjustedPcm.getAbsolutePath()
+                    , videoVolume, aacVolume);
+            wavFile = new File(context.getCacheDir(), adjustedPcm.getName() + ".wav");
+
+            int channelConfig = AudioFormat.CHANNEL_IN_MONO;
+            if (channelCount == 2) {
+                channelConfig = AudioFormat.CHANNEL_IN_STEREO;
+            }
+            //PCM转WAV
+            new PcmToWavUtil(adjustedSampleRate, channelConfig, channelCount, AudioFormat.ENCODING_PCM_16BIT).pcmToWav(adjustedPcm.getAbsolutePath(), wavFile.getAbsolutePath());
+
+        } else {
+            AudioUtil.decodeToPCM(aacInput, aacPcmFile.getAbsolutePath(), 0,
+                    aacDurationMs > videoDurationMs ? videoDurationMs * 1000 : aacDurationMs * 1000);
+            MediaFormat aacTrackFormat = aacExtractor.getTrackFormat(aacAudioIndex);
+            audioBitrate = VideoUtil.getAudioBitrate(aacTrackFormat);
+            muxerAudioIndex = mediaMuxer.addTrack(aacTrackFormat);
+
+            sampleRate = aacTrackFormat.getInteger(MediaFormat.KEY_SAMPLE_RATE);
+            channelCount = aacTrackFormat.containsKey(MediaFormat.KEY_CHANNEL_COUNT) ? aacTrackFormat.getInteger(MediaFormat.KEY_CHANNEL_COUNT) : 1;
+            if (channelCount > 2) {
+                File tempFile = new File(aacPcmFile + ".channel");
+                AudioUtil.stereoToMonoSimple(aacPcmFile.getAbsolutePath(), tempFile.getAbsolutePath(), channelCount);
+                channelCount = 1;
+                aacPcmFile.delete();
+                aacPcmFile = tempFile;
+            }
+
+            if (aacVolume != 50) {
+                adjustedPcm = new File(cacheDir, "adjusted_" + System.currentTimeMillis() + ".pcm");
+                AudioUtil.adjustPcmVolume(aacPcmFile.getAbsolutePath(), adjustedPcm.getAbsolutePath(), aacVolume);
+            } else {
+                adjustedPcm = aacPcmFile;
+            }
+
+            int channelConfig = AudioFormat.CHANNEL_IN_MONO;
+            if (channelCount == 2) {
+                channelConfig = AudioFormat.CHANNEL_IN_STEREO;
+            }
+            wavFile = new File(context.getCacheDir(), adjustedPcm.getName() + ".wav");
+            //PCM转WAV
+            new PcmToWavUtil(sampleRate, channelConfig, channelCount, AudioFormat.ENCODING_PCM_16BIT).pcmToWav(adjustedPcm.getAbsolutePath(), wavFile.getAbsolutePath());
+        }
+
+        //重新写入音频
         mediaMuxer.start();
 
         MediaExtractor pcmExtrator = new MediaExtractor();
@@ -752,10 +793,8 @@ public class VideoProcessor {
         int maxBufferSize = VideoUtil.getAudioMaxBufferSize(pcmTrackFormat);
         ByteBuffer buffer = ByteBuffer.allocateDirect(maxBufferSize);
         MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
-        int bitrate = VideoUtil.getAudioBitrate(oriAudioFormat);
-        int channelCount = oriAudioFormat.getInteger(MediaFormat.KEY_CHANNEL_COUNT);
         MediaFormat encodeFormat = MediaFormat.createAudioFormat(MediaFormat.MIMETYPE_AUDIO_AAC, sampleRate, channelCount);//参数对应-> mime type、采样率、声道数
-        encodeFormat.setInteger(MediaFormat.KEY_BIT_RATE, bitrate);//比特率
+        encodeFormat.setInteger(MediaFormat.KEY_BIT_RATE, audioBitrate);//比特率
         encodeFormat.setInteger(MediaFormat.KEY_AAC_PROFILE, MediaCodecInfo.CodecProfileLevel.AACObjectLC);
         encodeFormat.setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, maxBufferSize);
         MediaCodec encoder = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_AUDIO_AAC);
@@ -824,7 +863,9 @@ public class VideoProcessor {
                 }
             }
             //重新将视频写入
-            oriExtrator.unselectTrack(oriAudioIndex);
+            if(oriAudioIndex>=0) {
+                oriExtrator.unselectTrack(oriAudioIndex);
+            }
             oriExtrator.selectTrack(oriVideoIndex);
             oriExtrator.seekTo(startTimeUs, MediaExtractor.SEEK_TO_PREVIOUS_SYNC);
             maxBufferSize = oriVideoFormat.getInteger(MediaFormat.KEY_MAX_INPUT_SIZE);

@@ -21,9 +21,10 @@ import java.nio.channels.FileChannel;
 
 public class AudioUtil {
     final static String TAG = "VideoProcessor";
+    public static int VOLUMN_MAX_RATIO = 20;
 
-    public static void adjustPcmVolumn(String fromPath, String toPath, @IntRange(from = 0, to = 100) int volumn) throws IOException {
-        float vol = normalizeVolumn(volumn);
+    public static void adjustPcmVolume(String fromPath, String toPath, @IntRange(from = 0, to = 100) int volume) throws IOException {
+        float vol = normalizeVolume(volume);
 
         byte[] buffer = new byte[2048];
         FileInputStream fileInputStream = new FileInputStream(fromPath);
@@ -52,23 +53,23 @@ public class AudioUtil {
     }
 
     /**
-     * @param volumn
+     * @param volume
      * @return 0~50 -> 0~1
-     * 50~100 ->1~30
+     * 50~100 ->1~VOLUMN_MAX_RATIO
      */
-    private static float normalizeVolumn(@IntRange(from = 0, to = 100) int volumn) {
-        if (volumn <= 50) {
-            return volumn / 50f;
+    private static float normalizeVolume(@IntRange(from = 0, to = 100) int volume) {
+        if (volume <= 50) {
+            return volume / 50f;
         } else {
-            return (volumn - 50) / 50f * 29 + 1;
+            return (volume - 50) / 50f * (VOLUMN_MAX_RATIO-1) + 1;
         }
     }
 
     public static void mixPcm(String pcm1Path, String pcm2Path, String toPath
-            , @IntRange(from = 0, to = 100) int volumn1
-            , @IntRange(from = 0, to = 100) int volumn2) throws IOException {
-        float vol1 = normalizeVolumn(volumn1);
-        float vol2 = normalizeVolumn(volumn2);
+            , @IntRange(from = 0, to = 100) int volume1
+            , @IntRange(from = 0, to = 100) int volume2) throws IOException {
+        float vol1 = normalizeVolume(volume1);
+        float vol2 = normalizeVolume(volume2);
 
         byte[] buffer1 = new byte[2048];
         byte[] buffer2 = new byte[2048];
