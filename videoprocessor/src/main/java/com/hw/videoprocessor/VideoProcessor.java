@@ -600,15 +600,18 @@ public class VideoProcessor {
 
         int videoTrackIndex = VideoUtil.selectTrack(extractor, false);
         int audioTrackIndex = VideoUtil.selectTrack(extractor, true);
+        boolean audioExist = audioTrackIndex >= 0;
 
         final int MIN_FRAME_INTERVAL = 10 * 1000;
         MediaMuxer mediaMuxer = new MediaMuxer(output, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4);
         extractor.selectTrack(videoTrackIndex);
         MediaFormat videoTrackFormat = extractor.getTrackFormat(videoTrackIndex);
         int videoMuxerTrackIndex = mediaMuxer.addTrack(videoTrackFormat);
-
-        MediaFormat audioTrackFormat = extractor.getTrackFormat(audioTrackIndex);
-        int audioMuxerTrackIndex = mediaMuxer.addTrack(audioTrackFormat);
+        int audioMuxerTrackIndex = 0;
+        if (audioExist) {
+            MediaFormat audioTrackFormat = extractor.getTrackFormat(audioTrackIndex);
+            audioMuxerTrackIndex = mediaMuxer.addTrack(audioTrackFormat);
+        }
         mediaMuxer.start();
         int maxBufferSize = videoTrackFormat.getInteger(MediaFormat.KEY_MAX_INPUT_SIZE);
         ByteBuffer buffer = ByteBuffer.allocateDirect(maxBufferSize);
@@ -637,27 +640,29 @@ public class VideoProcessor {
                 extractor.seekTo(seekTime, MediaExtractor.SEEK_TO_PREVIOUS_SYNC);
             }
             //写音频帧
-            extractor.unselectTrack(videoTrackIndex);
-            extractor.selectTrack(audioTrackIndex);
-            VideoUtil.seekToLastFrame(extractor, audioTrackIndex, durationMs);
-            lastFrameTimeUs = -1;
-            while (true) {
-                long sampleTime = extractor.getSampleTime();
-                if (lastFrameTimeUs == -1) {
-                    lastFrameTimeUs = sampleTime;
+            if (audioExist) {
+                extractor.unselectTrack(videoTrackIndex);
+                extractor.selectTrack(audioTrackIndex);
+                VideoUtil.seekToLastFrame(extractor, audioTrackIndex, durationMs);
+                lastFrameTimeUs = -1;
+                while (true) {
+                    long sampleTime = extractor.getSampleTime();
+                    if (lastFrameTimeUs == -1) {
+                        lastFrameTimeUs = sampleTime;
+                    }
+                    info.presentationTimeUs = lastFrameTimeUs - sampleTime;
+                    info.size = extractor.readSampleData(buffer, 0);
+                    info.flags = extractor.getSampleFlags();
+                    if (info.size < 0) {
+                        break;
+                    }
+                    mediaMuxer.writeSampleData(audioMuxerTrackIndex, buffer, info);
+                    long seekTime = sampleTime - MIN_FRAME_INTERVAL;
+                    if (seekTime <= 0) {
+                        break;
+                    }
+                    extractor.seekTo(seekTime, MediaExtractor.SEEK_TO_PREVIOUS_SYNC);
                 }
-                info.presentationTimeUs = lastFrameTimeUs - sampleTime;
-                info.size = extractor.readSampleData(buffer, 0);
-                info.flags = extractor.getSampleFlags();
-                if (info.size < 0) {
-                    break;
-                }
-                mediaMuxer.writeSampleData(audioMuxerTrackIndex, buffer, info);
-                long seekTime = sampleTime - MIN_FRAME_INTERVAL;
-                if (seekTime <= 0) {
-                    break;
-                }
-                extractor.seekTo(seekTime, MediaExtractor.SEEK_TO_PREVIOUS_SYNC);
             }
         } finally {
             extractor.release();

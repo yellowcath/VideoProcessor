@@ -86,22 +86,27 @@ public class VideoUtil {
 
         MediaMuxer mediaMuxer = new MediaMuxer(outputVideo, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4);
         int videoMuxerIndex = mediaMuxer.addTrack(extractor.getTrackFormat(videoIndex));
-        int audioMuxerIndex = mediaMuxer.addTrack(extractor.getTrackFormat(audioIndex));
+        int audioMuxerIndex = 0;
+        boolean audioExist = audioIndex >= 0;
+        if (audioExist) {
+            audioMuxerIndex = mediaMuxer.addTrack(extractor.getTrackFormat(audioIndex));
+        }
         mediaMuxer.start();
 
         long videoFrameTimeUs;
-        long audioFrameTimeUs;
+        long audioFrameTimeUs = 0;
         long baseFrameTimeUs = 0;
 
         for (int i = 0; i < inputVideos.size(); i++) {
             if (i > 0) {
                 extractor = new MediaExtractor();
                 extractor.setDataSource(inputVideos.get(i).getAbsolutePath());
-                videoIndex = selectTrack(extractor, false);
                 audioIndex = selectTrack(extractor, true);
             }
-            audioFrameTimeUs = writeAudioTrack(extractor, mediaMuxer, audioMuxerIndex, null, null, baseFrameTimeUs);
-            extractor.unselectTrack(audioIndex);
+            if (audioExist) {
+                audioFrameTimeUs = writeAudioTrack(extractor, mediaMuxer, audioMuxerIndex, null, null, baseFrameTimeUs);
+                extractor.unselectTrack(audioIndex);
+            }
             videoFrameTimeUs = appendVideoTrack(extractor, mediaMuxer, videoMuxerIndex, null, null, baseFrameTimeUs, bitrate, i == 0, false);
             baseFrameTimeUs = videoFrameTimeUs > audioFrameTimeUs ? videoFrameTimeUs : audioFrameTimeUs;
             CL.i("片段" + i + "已合成,audioFrameTime:" + audioFrameTimeUs / 1000f + " videoFrameTime:" + videoFrameTimeUs / 1000f);
@@ -114,11 +119,11 @@ public class VideoUtil {
             //合并反序片段
             extractor = new MediaExtractor();
             extractor.setDataSource(out);
-            videoIndex = selectTrack(extractor, false);
-            audioIndex = selectTrack(extractor, true);
-
-            audioFrameTimeUs = writeAudioTrack(extractor, mediaMuxer, audioMuxerIndex, null, null, baseFrameTimeUs);
-            extractor.unselectTrack(audioIndex);
+            if (audioExist) {
+                audioIndex = selectTrack(extractor, true);
+                audioFrameTimeUs = writeAudioTrack(extractor, mediaMuxer, audioMuxerIndex, null, null, baseFrameTimeUs);
+                extractor.unselectTrack(audioIndex);
+            }
             videoFrameTimeUs = appendVideoTrack(extractor, mediaMuxer, videoMuxerIndex, null, null, baseFrameTimeUs, bitrate, false, i == inputVideos.size() - 1);
             baseFrameTimeUs = videoFrameTimeUs > audioFrameTimeUs ? videoFrameTimeUs : audioFrameTimeUs;
             CL.i("反序片段" + i + "已合成,audioFrameTime:" + audioFrameTimeUs / 1000f + " videoFrameTime:" + videoFrameTimeUs / 1000f);
@@ -349,15 +354,15 @@ public class VideoUtil {
                 while (encoderOutputAvailable) {
                     int outputBufferIndex = encoder.dequeueOutputBuffer(info, TIMEOUT_USEC);
                     CL.i("encode outputBufferIndex = " + outputBufferIndex);
-                    if(signalEncodeEnd && outputBufferIndex == MediaCodec.INFO_TRY_AGAIN_LATER){
-                        encodeTryAgainCount ++;
-                        if(encodeTryAgainCount > 10){
+                    if (signalEncodeEnd && outputBufferIndex == MediaCodec.INFO_TRY_AGAIN_LATER) {
+                        encodeTryAgainCount++;
+                        if (encodeTryAgainCount > 10) {
                             //三星S8上出现signalEndOfInputStream之后一直tryAgain的问题
                             encoderDone = true;
                             CL.e("INFO_TRY_AGAIN_LATER 10 times,force End!");
                             break;
                         }
-                    }else{
+                    } else {
                         encodeTryAgainCount = 0;
                     }
                     if (outputBufferIndex == MediaCodec.INFO_TRY_AGAIN_LATER) {
@@ -457,13 +462,13 @@ public class VideoUtil {
         return (int) (bitrateMultiple * oriBitrate);
     }
 
-    public static void seekToLastFrame(MediaExtractor extractor,int trackIndex,int durationMs){
+    public static void seekToLastFrame(MediaExtractor extractor, int trackIndex, int durationMs) {
         int seekToDuration = durationMs * 1000;
-        if(extractor.getSampleTrackIndex()!=trackIndex) {
+        if (extractor.getSampleTrackIndex() != trackIndex) {
             extractor.selectTrack(trackIndex);
         }
         extractor.seekTo(seekToDuration, MediaExtractor.SEEK_TO_PREVIOUS_SYNC);
-        while(seekToDuration>0 && extractor.getSampleTrackIndex()!=trackIndex){
+        while (seekToDuration > 0 && extractor.getSampleTrackIndex() != trackIndex) {
             seekToDuration -= 10000;
             extractor.seekTo(seekToDuration, MediaExtractor.SEEK_TO_PREVIOUS_SYNC);
         }
