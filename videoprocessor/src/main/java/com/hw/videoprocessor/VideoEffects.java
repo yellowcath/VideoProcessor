@@ -1,6 +1,7 @@
 package com.hw.videoprocessor;
 
 import android.content.Context;
+import com.hw.videoprocessor.util.IFrameIntervalConfig;
 
 import java.io.File;
 import java.io.IOException;
@@ -22,7 +23,7 @@ public class VideoEffects {
         VideoProcessor.processVideo(context, inputVideo, speedVideo.getAbsolutePath(), null, null, null, null,
                 speed, null, null);
         int bitrate = VideoUtil.getBitrateForAllKeyFrameVideo(inputVideo);
-        List<File> fileList = VideoUtil.splitVideo(context, speedVideo.getAbsolutePath(), cacheDir.getAbsolutePath(), splitTimeMs, 500, bitrate, 0);
+        List<File> fileList = VideoUtil.splitVideo(context, speedVideo.getAbsolutePath(), cacheDir.getAbsolutePath(), splitTimeMs, 500, bitrate, IFrameIntervalConfig.getAllKeyframeInterval());
         VideoUtil.combineVideos(fileList, outputVideo);
     }
 }
