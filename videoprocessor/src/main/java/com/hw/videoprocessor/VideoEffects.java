@@ -2,6 +2,7 @@ package com.hw.videoprocessor;
 
 import android.content.Context;
 import android.media.MediaCodec;
+import android.media.MediaMetadataRetriever;
 import com.hw.videoprocessor.util.CL;
 
 import java.io.File;
@@ -20,7 +21,11 @@ public class VideoEffects {
     public static void doKichiku(Context context, String inputVideo, String outputVideo, float speed, int splitTimeMs) throws IOException {
         File cacheDir = new File(context.getCacheDir(), "kichiku_" + System.currentTimeMillis());
         cacheDir.mkdir();
-        File speedVideo = new File(cacheDir, "speed_" + speed + ".mp4");
+        MediaMetadataRetriever retriever = new MediaMetadataRetriever();
+        retriever.setDataSource(inputVideo);
+        int oriBitrate = Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_BITRATE));
+        retriever.release();
+        File speedVideo = new File(cacheDir, "speed_" + speed + ".tmp");
         VideoProcessor.processVideo(context, inputVideo, speedVideo.getAbsolutePath(), null, null, null, null,
                 speed, null, null);
         int bitrate = VideoUtil.getBitrateForAllKeyFrameVideo(inputVideo);
@@ -29,9 +34,13 @@ public class VideoEffects {
             fileList = VideoUtil.splitVideo(context, speedVideo.getAbsolutePath(), cacheDir.getAbsolutePath(), splitTimeMs, 500, bitrate, 0);
         } catch (MediaCodec.CodecException e) {
             CL.e(e);
-            fileList = VideoUtil.splitVideo(context, speedVideo.getAbsolutePath(), cacheDir.getAbsolutePath(), splitTimeMs, 500, bitrate, -1);
             /** Nexus5上-1代表全关键帧*/
+            fileList = VideoUtil.splitVideo(context, speedVideo.getAbsolutePath(), cacheDir.getAbsolutePath(), splitTimeMs, 500, bitrate, -1);
         }
-        VideoUtil.combineVideos(fileList, outputVideo);
+        File cacheCombineFile = new File(cacheDir, "combine_" + System.currentTimeMillis() + ".tmp");
+        VideoUtil.combineVideos(fileList, cacheCombineFile.getAbsolutePath());
+        VideoProcessor.processVideo(context, cacheCombineFile.getAbsolutePath(), outputVideo, null, null, null, null, null,
+                oriBitrate, VideoProcessor.DEFAULT_I_FRAME_INTERVAL);
+        cacheCombineFile.delete();
     }
 }
