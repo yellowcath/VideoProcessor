@@ -16,7 +16,6 @@ import android.util.Pair;
 import android.view.Surface;
 import com.hw.videoprocessor.util.AudioUtil;
 import com.hw.videoprocessor.util.CL;
-import com.hw.videoprocessor.util.IFrameIntervalConfig;
 import com.hw.videoprocessor.util.InputSurface;
 import com.hw.videoprocessor.util.OutputSurface;
 import com.hw.videoprocessor.util.PcmToWavUtil;
@@ -98,7 +97,13 @@ public class VideoProcessor {
                 retriever.setDataSource(input);
                 int oriBitrate = Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_BITRATE));
                 int duration = Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION));
-                processVideo(context, input, tempFile.getAbsolutePath(), null, null, null, null, null, oriBitrate * bitrateMultiple, IFrameIntervalConfig.getAllKeyframeInterval());
+                try {
+                    processVideo(context, input, tempFile.getAbsolutePath(), null, null, null, null, null, oriBitrate * bitrateMultiple, 0);
+                } catch (MediaCodec.CodecException e) {
+                    CL.e(e);
+                    /** Nexus5上-1代表全关键帧*/
+                    processVideo(context, input, tempFile.getAbsolutePath(), null, null, null, null, null, oriBitrate * bitrateMultiple, -1);
+                }
                 revertVideoNoDecode(tempFile.getAbsolutePath(), temp2File.getAbsolutePath());
                 int oriIFrameInterval = (int) (keyFrameCount / (duration / 1000f));
                 oriIFrameInterval = oriIFrameInterval == 0 ? 1 : oriIFrameInterval;

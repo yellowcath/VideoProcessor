@@ -1,7 +1,8 @@
 package com.hw.videoprocessor;
 
 import android.content.Context;
-import com.hw.videoprocessor.util.IFrameIntervalConfig;
+import android.media.MediaCodec;
+import com.hw.videoprocessor.util.CL;
 
 import java.io.File;
 import java.io.IOException;
@@ -23,7 +24,14 @@ public class VideoEffects {
         VideoProcessor.processVideo(context, inputVideo, speedVideo.getAbsolutePath(), null, null, null, null,
                 speed, null, null);
         int bitrate = VideoUtil.getBitrateForAllKeyFrameVideo(inputVideo);
-        List<File> fileList = VideoUtil.splitVideo(context, speedVideo.getAbsolutePath(), cacheDir.getAbsolutePath(), splitTimeMs, 500, bitrate, IFrameIntervalConfig.getAllKeyframeInterval());
+        List<File> fileList;
+        try {
+            fileList = VideoUtil.splitVideo(context, speedVideo.getAbsolutePath(), cacheDir.getAbsolutePath(), splitTimeMs, 500, bitrate, 0);
+        } catch (MediaCodec.CodecException e) {
+            CL.e(e);
+            fileList = VideoUtil.splitVideo(context, speedVideo.getAbsolutePath(), cacheDir.getAbsolutePath(), splitTimeMs, 500, bitrate, -1);
+            /** Nexus5上-1代表全关键帧*/
+        }
         VideoUtil.combineVideos(fileList, outputVideo);
     }
 }
