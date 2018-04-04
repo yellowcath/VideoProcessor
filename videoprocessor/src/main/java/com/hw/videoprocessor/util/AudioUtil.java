@@ -21,9 +21,13 @@ import java.nio.channels.FileChannel;
 
 public class AudioUtil {
     final static String TAG = "VideoProcessor";
-    public static int VOLUMN_MAX_RATIO = 20;
+    public static int VOLUMN_MAX_RATIO = 1;
 
     public static void adjustPcmVolume(String fromPath, String toPath, @IntRange(from = 0, to = 100) int volume) throws IOException {
+        if (volume == 100) {
+            copyFile(fromPath, toPath);
+            return;
+        }
         float vol = normalizeVolume(volume);
 
         byte[] buffer = new byte[2048];
@@ -54,15 +58,10 @@ public class AudioUtil {
 
     /**
      * @param volume
-     * @return 0~50 -> 0~1
-     * 50~100 ->1~VOLUMN_MAX_RATIO
+     * @return 0~100 -> 0~1
      */
     private static float normalizeVolume(@IntRange(from = 0, to = 100) int volume) {
-        if (volume <= 50) {
-            return volume / 50f;
-        } else {
-            return (volume - 50) / 50f * (VOLUMN_MAX_RATIO-1) + 1;
-        }
+        return volume / 100f * VOLUMN_MAX_RATIO;
     }
 
     public static void mixPcm(String pcm1Path, String pcm2Path, String toPath
