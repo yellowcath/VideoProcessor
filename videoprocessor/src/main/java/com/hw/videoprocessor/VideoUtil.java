@@ -9,7 +9,6 @@ import android.media.MediaMetadataRetriever;
 import android.media.MediaMuxer;
 import android.util.Pair;
 import android.view.Surface;
-import com.hw.videoprocessor.util.AudioUtil;
 import com.hw.videoprocessor.util.CL;
 import com.hw.videoprocessor.util.InputSurface;
 import com.hw.videoprocessor.util.OutputSurface;
@@ -58,7 +57,6 @@ public class VideoUtil {
             File file = new File(outputDir, pair.first + ".mp4");
             VideoProcessor.processVideo(context, inputVideo, file.getAbsolutePath(), null, null, pair.first,
                     pair.second, null, bitrate, iFrameInterval);
-            AudioUtil.copyFile(file.getAbsolutePath(), "/mnt/sdcard/slice_" + pair.first + ".mp4");
             fileList.add(file);
         }
         return fileList;
