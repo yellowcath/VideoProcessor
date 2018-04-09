@@ -504,8 +504,11 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void run() {
                 try {
+                    long s = System.currentTimeMillis();
                     VideoProcessor.processVideo(getApplicationContext(), selectVideoPath, filePath,
                             null, null, startMs, endMs, speed, null, null);
+                    long e = System.currentTimeMillis();
+                    CL.w("减速已完成，耗时:" + (e - s) / 1000f + "s");
                     Intent intent = new Intent(MainActivity.this, PreviewActivity.class);
                     intent.putExtra(FILEPATH, filePath);
                     startActivity(intent);

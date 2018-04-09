@@ -13,11 +13,8 @@ import android.support.annotation.IntRange;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
 import android.util.Pair;
-import android.view.Surface;
 import com.hw.videoprocessor.util.AudioUtil;
 import com.hw.videoprocessor.util.CL;
-import com.hw.videoprocessor.util.InputSurface;
-import com.hw.videoprocessor.util.OutputSurface;
 import com.hw.videoprocessor.util.PcmToWavUtil;
 import net.surina.soundtouch.SoundTouch;
 
@@ -26,6 +23,8 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Created by huangwei on 2018/2/2.
@@ -46,6 +45,9 @@ public class VideoProcessor {
      * 控制音频合成时，如果输入的音频文件长度不够，是否重复填充
      */
     public static boolean AUDIO_MIX_REPEAT = true;
+
+    final static int TIMEOUT_USEC = 2500;
+
 
     public static void scaleVideo(Context context, String input, String output,
                                   int outWidth, int outHeight) throws IOException {
@@ -117,13 +119,16 @@ public class VideoProcessor {
 
     /**
      * 支持裁剪缩放快慢放
-     * 注意：不能在主线程进行
+     * 注意：会在当前线程创建GL环境，所以不能在主线程进行
      */
     public static void processVideo(Context context, String input, String output,
                                     @Nullable Integer outWidth, @Nullable Integer outHeight,
                                     @Nullable Integer startTimeMs, @Nullable Integer endTimeMs,
                                     @Nullable Float speed, @Nullable Integer bitrate,
                                     @Nullable Integer iFrameInterval) throws IOException {
+        if (Thread.currentThread().getId() == 1) {
+            throw new RuntimeException("无法在主线程执行!");
+        }
 
         MediaMetadataRetriever retriever = new MediaMetadataRetriever();
         retriever.setDataSource(input);
@@ -176,225 +181,40 @@ public class VideoProcessor {
             extractor.seekTo(0, MediaExtractor.SEEK_TO_PREVIOUS_SYNC);
         }
 
-        MediaCodec decoder = null;
-        MediaCodec encoder = null;
-        MediaFormat inputFormat = extractor.getTrackFormat(videoIndex);
-        //初始化编码器
-        int frameRate = inputFormat.containsKey(MediaFormat.KEY_FRAME_RATE) ? inputFormat.getInteger(inputFormat.KEY_FRAME_RATE) : DEFAULT_FRAME_RATE;
-        MediaFormat outputFormat = MediaFormat.createVideoFormat(MIME_TYPE, resultWidth, resultHeight);
-        outputFormat.setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface);
-        outputFormat.setInteger(MediaFormat.KEY_BIT_RATE, bitrate);
-        outputFormat.setInteger(MediaFormat.KEY_FRAME_RATE, frameRate);
-        outputFormat.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, iFrameInterval);
 
-        encoder = MediaCodec.createEncoderByType(MIME_TYPE);
-        encoder.configure(outputFormat, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE);
-        Surface surface = encoder.createInputSurface();
-        InputSurface inputSurface = new InputSurface(surface);
-        inputSurface.makeCurrent();
 
-        //初始化解码器
-        decoder = MediaCodec.createDecoderByType(inputFormat.getString(MediaFormat.KEY_MIME));
-        inputFormat.setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface);
-        OutputSurface outputSurface = new OutputSurface();
-        decoder.configure(inputFormat, outputSurface.getSurface(), null, 0);
-
-        decoder.start();
-        encoder.start();
-
-        final int TIMEOUT_USEC = 2500;
-        long videoStartTimeUs = -1;
+        AtomicBoolean decodeDone = new AtomicBoolean(false);
+        CountDownLatch muxerStartLatch = new CountDownLatch(1);
+        VideoDecodeThread decodeThread = new VideoDecodeThread(extractor, bitrate,resultWidth,resultHeight, startTimeMs, endTimeMs,
+                speed,iFrameInterval, videoIndex, decodeDone);
+        VideoEncodeThread encodeThread = new VideoEncodeThread(decodeThread, mediaMuxer, decodeDone, muxerStartLatch);
+        AudioProcessThread audioProcessThread = new AudioProcessThread(context, input, mediaMuxer, startTimeMs, endTimeMs,
+                speed, muxerAudioTrackIndex, muxerStartLatch);
+        decodeThread.start();
+        encodeThread.start();
+        audioProcessThread.start();
+        try {
+            decodeThread.join();
+            encodeThread.join();
+            audioProcessThread.join();
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
 
         try {
-            //开始解码
-            MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
-            boolean encoderDone = false;
-            boolean decoderDone = false;
-            boolean inputDone = false;
-            boolean signalEncodeEnd = false;
-            int videoTrackIndex = -5;
-            int encodeTryAgainCount = 0;
-            while (!decoderDone || !encoderDone) {
-                //还有帧数据，输入解码器
-                if (!inputDone) {
-                    boolean eof = false;
-                    int index = extractor.getSampleTrackIndex();
-                    if (index == videoIndex) {
-                        int inputBufIndex = decoder.dequeueInputBuffer(TIMEOUT_USEC);
-                        if (inputBufIndex >= 0) {
-                            ByteBuffer inputBuf = decoder.getInputBuffer(inputBufIndex);
-                            int chunkSize = extractor.readSampleData(inputBuf, 0);
-                            if (chunkSize < 0) {
-                                decoder.queueInputBuffer(inputBufIndex, 0, 0, 0L, MediaCodec.BUFFER_FLAG_END_OF_STREAM);
-                                decoderDone = true;
-                            } else {
-                                long sampleTime = extractor.getSampleTime();
-                                decoder.queueInputBuffer(inputBufIndex, 0, chunkSize, sampleTime, 0);
-                                extractor.advance();
-                            }
-                        }
-                    } else if (index == -1) {
-                        eof = true;
-                    }
-
-                    if (eof) {
-                        //解码输入结束
-                        CL.it(TAG, "inputDone");
-                        int inputBufIndex = decoder.dequeueInputBuffer(TIMEOUT_USEC);
-                        if (inputBufIndex >= 0) {
-                            decoder.queueInputBuffer(inputBufIndex, 0, 0, 0L, MediaCodec.BUFFER_FLAG_END_OF_STREAM);
-                            inputDone = true;
-                        }
-                    }
-                }
-                boolean decoderOutputAvailable = !decoderDone;
-                if (decoderDone) {
-                    CL.it(TAG, "decoderOutputAvailable:" + decoderOutputAvailable);
-                }
-                while (decoderOutputAvailable) {
-                    int outputBufferIndex = decoder.dequeueOutputBuffer(info, TIMEOUT_USEC);
-                    CL.it(TAG, "outputBufferIndex = " + outputBufferIndex);
-                    if (outputBufferIndex == MediaCodec.INFO_TRY_AGAIN_LATER) {
-                        break;
-                    } else if (outputBufferIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
-                        MediaFormat newFormat = decoder.getOutputFormat();
-                        CL.it(TAG, "decode newFormat = " + newFormat);
-                    } else if (outputBufferIndex < 0) {
-                        //ignore
-                        CL.et(TAG, "unexpected result from decoder.dequeueOutputBuffer: " + outputBufferIndex);
-                    } else {
-                        boolean doRender = true;
-                        //解码数据可用
-                        if (endTimeMs != null && info.presentationTimeUs >= endTimeMs * 1000) {
-                            inputDone = true;
-                            decoderDone = true;
-                            doRender = false;
-                            info.flags |= MediaCodec.BUFFER_FLAG_END_OF_STREAM;
-                        }
-                        if (startTimeMs != null && info.presentationTimeUs < startTimeMs * 1000) {
-                            doRender = false;
-                            CL.et(TAG, "drop frame startTime = " + startTimeMs + " present time = " + info.presentationTimeUs / 1000);
-                        }
-                        if (info.flags == MediaCodec.BUFFER_FLAG_END_OF_STREAM) {
-                            decoderDone = true;
-                            decoder.releaseOutputBuffer(outputBufferIndex, false);
-                            CL.it(TAG, "decoderDone");
-                            break;
-                        }
-                        decoder.releaseOutputBuffer(outputBufferIndex, true);
-                        if (doRender) {
-                            boolean errorWait = false;
-                            try {
-                                outputSurface.awaitNewImage();
-                            } catch (Exception e) {
-                                errorWait = true;
-                                CL.et(TAG, e.getMessage());
-                            }
-                            if (!errorWait) {
-                                if (videoStartTimeUs == -1) {
-                                    videoStartTimeUs = info.presentationTimeUs;
-                                    CL.it(TAG, "videoStartTime:" + videoStartTimeUs / 1000);
-                                }
-                                outputSurface.drawImage(false);
-                                long presentationTimeNs = (info.presentationTimeUs - videoStartTimeUs) * 1000;
-                                if (speed != null) {
-                                    presentationTimeNs /= speed;
-                                }
-                                inputSurface.setPresentationTime(presentationTimeNs);
-                                inputSurface.swapBuffers();
-                                break;
-                            }
-                        }
-                    }
-                }
-
-                //开始编码
-                if (decoderDone && !signalEncodeEnd) {
-                    signalEncodeEnd = true;
-                    encoder.signalEndOfInputStream();
-                }
-                //输出
-                boolean encoderOutputAvailable = !encoderDone;
-                while (encoderOutputAvailable) {
-                    int outputBufferIndex = encoder.dequeueOutputBuffer(info, TIMEOUT_USEC);
-                    CL.it(TAG, "encode outputBufferIndex = " + outputBufferIndex);
-                    if (signalEncodeEnd && outputBufferIndex == MediaCodec.INFO_TRY_AGAIN_LATER) {
-                        encodeTryAgainCount++;
-                        if (encodeTryAgainCount > 10) {
-                            //三星S8上出现signalEndOfInputStream之后一直tryAgain的问题
-                            encoderDone = true;
-                            CL.et(TAG, "INFO_TRY_AGAIN_LATER 10 times,force End!");
-                            break;
-                        }
-                    } else {
-                        encodeTryAgainCount = 0;
-                    }
-                    if (outputBufferIndex == MediaCodec.INFO_TRY_AGAIN_LATER) {
-                        break;
-                    } else if (outputBufferIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
-                        MediaFormat newFormat = encoder.getOutputFormat();
-                        if (videoTrackIndex == -5) {
-                            videoTrackIndex = mediaMuxer.addTrack(newFormat);
-                            mediaMuxer.start();
-                        }
-                        CL.it(TAG, "encode newFormat = " + newFormat);
-                    } else if (outputBufferIndex < 0) {
-                        //ignore
-                        CL.et(TAG, "unexpected result from decoder.dequeueOutputBuffer: " + outputBufferIndex);
-                    } else {
-                        //编码数据可用
-                        ByteBuffer outputBuffer = encoder.getOutputBuffer(outputBufferIndex);
-                        CL.it(TAG, "writeSampleData,size:" + info.size + " time:" + info.presentationTimeUs / 1000);
-                        if (info.flags == MediaCodec.BUFFER_FLAG_END_OF_STREAM && info.presentationTimeUs < 0) {
-                            info.presentationTimeUs = 0;
-                        }
-                        mediaMuxer.writeSampleData(videoTrackIndex, outputBuffer, info);
-
-                        encoder.releaseOutputBuffer(outputBufferIndex, false);
-                        if (info.flags == MediaCodec.BUFFER_FLAG_END_OF_STREAM) {
-                            encoderDone = true;
-                            CL.it(TAG, "encoderDone");
-                            break;
-                        }
-                    }
-                }
-            }
-            encoder.stop();
-            decoder.stop();
-
-            if (audioIndex >= 0) {
-                //处理音频
-                extractor.unselectTrack(videoIndex);
-                //音频暂不支持变速
-                Integer startTimeUs = startTimeMs == null ? null : (int) videoStartTimeUs;
-                Integer endTimeUs = endTimeMs == null ? null : endTimeMs * 1000;
-                if (speed != null) {
-                    writeAudioTrack(context, extractor, mediaMuxer, muxerAudioTrackIndex, startTimeUs, endTimeUs, speed);
-                } else {
-                    VideoUtil.writeAudioTrack(extractor, mediaMuxer, muxerAudioTrackIndex, startTimeUs, endTimeUs);
-                }
-            }
-        } catch (Exception e) {
-            CL.e(e);
-            e.printStackTrace();
-        } finally {
-            try {
-                mediaMuxer.release();
-                encoder.release();
-                decoder.release();
-                extractor.release();
-            } catch (Exception e2) {
-                CL.e(e2);
-            }
+            mediaMuxer.release();
+            extractor.release();
+        } catch (Exception e2) {
+            CL.e(e2);
         }
     }
 
     /**
      * 需要改变音频速率的情况下，需要先解码->改变速率->编码
      */
-    private static void writeAudioTrack(Context context, MediaExtractor extractor, MediaMuxer mediaMuxer, int muxerAudioTrackIndex,
-                                        Integer startTimeUs, Integer endTimeUs,
-                                        @NonNull Float speed) throws Exception {
+    static void writeAudioTrack(Context context, MediaExtractor extractor, MediaMuxer mediaMuxer, int muxerAudioTrackIndex,
+                                Integer startTimeUs, Integer endTimeUs,
+                                @NonNull Float speed) throws Exception {
         int audioTrack = VideoUtil.selectTrack(extractor, true);
         extractor.selectTrack(audioTrack);
         if (startTimeUs == null) {
@@ -587,9 +407,7 @@ public class VideoProcessor {
             outFile.delete();
             pcmExtrator.release();
             encoder.release();
-            mediaMuxer.release();
         }
-
     }
 
     /**
