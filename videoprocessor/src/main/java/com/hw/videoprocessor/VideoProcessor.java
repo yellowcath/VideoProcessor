@@ -182,12 +182,13 @@ public class VideoProcessor {
         }
 
 
-
         AtomicBoolean decodeDone = new AtomicBoolean(false);
         CountDownLatch muxerStartLatch = new CountDownLatch(1);
-        VideoDecodeThread decodeThread = new VideoDecodeThread(extractor, bitrate,resultWidth,resultHeight, startTimeMs, endTimeMs,
-                speed,iFrameInterval, videoIndex, decodeDone);
-        VideoEncodeThread encodeThread = new VideoEncodeThread(decodeThread, mediaMuxer, decodeDone, muxerStartLatch);
+        VideoEncodeThread encodeThread = new VideoEncodeThread(extractor, mediaMuxer, bitrate,
+                resultWidth, resultHeight, iFrameInterval, videoIndex,
+                decodeDone, muxerStartLatch);
+        VideoDecodeThread decodeThread = new VideoDecodeThread(encodeThread, extractor, startTimeMs, endTimeMs,
+                speed, videoIndex, decodeDone);
         AudioProcessThread audioProcessThread = new AudioProcessThread(context, input, mediaMuxer, startTimeMs, endTimeMs,
                 speed, muxerAudioTrackIndex, muxerStartLatch);
         decodeThread.start();

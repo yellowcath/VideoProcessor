@@ -1,7 +1,6 @@
 package com.hw.videoprocessor;
 
 import android.media.MediaCodec;
-import android.media.MediaCodecInfo;
 import android.media.MediaExtractor;
 import android.media.MediaFormat;
 import android.support.annotation.Nullable;
@@ -12,11 +11,9 @@ import com.hw.videoprocessor.util.OutputSurface;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.util.concurrent.Semaphore;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import static com.hw.videoprocessor.VideoProcessor.DEFAULT_FRAME_RATE;
-import static com.hw.videoprocessor.VideoProcessor.MIME_TYPE;
 import static com.hw.videoprocessor.VideoProcessor.TIMEOUT_USEC;
 
 /**
@@ -24,28 +21,21 @@ import static com.hw.videoprocessor.VideoProcessor.TIMEOUT_USEC;
  */
 
 public class VideoDecodeThread extends Thread {
-    static int MAX_BUFFER_SIZE = 3;
-
     private MediaExtractor mExtractor;
     private MediaCodec mDecoder;
-    private InputSurface mInputSurface;
     private Integer mStartTimeMs;
     private Integer mEndTimeMs;
     private Float mSpeed;
-    private int mVideoIndex;
     private AtomicBoolean mDecodeDone;
     private Exception mException;
-    private int mBitrate;
-    private int mResultWidth;
-    private int mResultHeight;
-    private int mIFrameInterval;
-    private volatile MediaCodec mEncoder;
-    private Semaphore mDrawBufferSemaphore = new Semaphore(3);
+    private int mVideoIndex;
+    private VideoEncodeThread mVideoEncodeThread;
+    private InputSurface mInputSurface;
+    private OutputSurface mOutputSurface;
 
-    public VideoDecodeThread(MediaExtractor extractor,
-                             int bitrate,int resultWidth,int resultHeight,
+    public VideoDecodeThread(VideoEncodeThread videoEncodeThread, MediaExtractor extractor,
                              @Nullable Integer startTimeMs, @Nullable Integer endTimeMs,
-                             @Nullable Float speed,int iFrameInterval,
+                             @Nullable Float speed,
                              int videoIndex, AtomicBoolean decodeDone
 
     ) {
@@ -56,10 +46,7 @@ public class VideoDecodeThread extends Thread {
         mSpeed = speed;
         mVideoIndex = videoIndex;
         mDecodeDone = decodeDone;
-        mBitrate = bitrate;
-        mResultHeight = resultHeight;
-        mResultWidth = resultWidth;
-        mIFrameInterval = iFrameInterval;
+        mVideoEncodeThread = videoEncodeThread;
     }
 
     @Override
@@ -71,37 +58,31 @@ public class VideoDecodeThread extends Thread {
             mException = e;
             CL.e(e);
         } finally {
+            mInputSurface.release();
+            mOutputSurface.release();
             mDecoder.stop();
             mDecoder.release();
         }
     }
 
     private void doDecode() throws IOException {
-        MediaCodec encoder = null;
-        MediaFormat inputFormat = mExtractor.getTrackFormat(mVideoIndex);
-        //初始化编码器
-        int frameRate = inputFormat.containsKey(MediaFormat.KEY_FRAME_RATE) ? inputFormat.getInteger(inputFormat.KEY_FRAME_RATE) : DEFAULT_FRAME_RATE;
-        MediaFormat outputFormat = MediaFormat.createVideoFormat(MIME_TYPE, mResultWidth, mResultHeight);
-        outputFormat.setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface);
-        outputFormat.setInteger(MediaFormat.KEY_BIT_RATE, mBitrate);
-        outputFormat.setInteger(MediaFormat.KEY_FRAME_RATE, frameRate);
-        outputFormat.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, mIFrameInterval);
-
-        encoder = MediaCodec.createEncoderByType(MIME_TYPE);
-        encoder.configure(outputFormat, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE);
-        Surface encodeSurface = encoder.createInputSurface();
-
+        CountDownLatch eglContextLatch = mVideoEncodeThread.getEglContextLatch();
+        try {
+            eglContextLatch.await();
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+        Surface encodeSurface = mVideoEncodeThread.getSurface();
         mInputSurface = new InputSurface(encodeSurface);
         mInputSurface.makeCurrent();
 
+        MediaFormat inputFormat = mExtractor.getTrackFormat(mVideoIndex);
+
         //初始化解码器
         mDecoder = MediaCodec.createDecoderByType(inputFormat.getString(MediaFormat.KEY_MIME));
-        inputFormat.setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface);
-        OutputSurface outputSurface = new OutputSurface();
-        mDecoder.configure(inputFormat, outputSurface.getSurface(), null, 0);
+        mOutputSurface = new OutputSurface();
+        mDecoder.configure(inputFormat, mOutputSurface.getSurface(), null, 0);
         mDecoder.start();
-        encoder.start();
-        mEncoder = encoder;
 
         //开始解码
         MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
@@ -133,7 +114,7 @@ public class VideoDecodeThread extends Thread {
 
                 if (eof) {
                     //解码输入结束
-                    CL.i( "inputDone");
+                    CL.i("inputDone");
                     int inputBufIndex = mDecoder.dequeueInputBuffer(TIMEOUT_USEC);
                     if (inputBufIndex >= 0) {
                         mDecoder.queueInputBuffer(inputBufIndex, 0, 0, 0L, MediaCodec.BUFFER_FLAG_END_OF_STREAM);
@@ -179,7 +160,7 @@ public class VideoDecodeThread extends Thread {
                     if (doRender) {
                         boolean errorWait = false;
                         try {
-                            outputSurface.awaitNewImage();
+                            mOutputSurface.awaitNewImage();
                         } catch (Exception e) {
                             errorWait = true;
                             CL.e(e.getMessage());
@@ -189,15 +170,7 @@ public class VideoDecodeThread extends Thread {
                                 videoStartTimeUs = info.presentationTimeUs;
                                 CL.i("videoStartTime:" + videoStartTimeUs / 1000);
                             }
-                            //
-                            try {
-                                CL.w("wait mDrawBufferSemaphore+");
-                                mDrawBufferSemaphore.acquire(1);
-                                CL.w("wait mDrawBufferSemaphore-");
-                            } catch (InterruptedException e) {
-                                e.printStackTrace();
-                            }
-                            outputSurface.drawImage(false);
+                            mOutputSurface.drawImage(false);
                             long presentationTimeNs = (info.presentationTimeUs - videoStartTimeUs) * 1000;
                             if (mSpeed != null) {
                                 presentationTimeNs /= mSpeed;
@@ -213,15 +186,7 @@ public class VideoDecodeThread extends Thread {
         mDecodeDone.set(true);
     }
 
-    public Semaphore getDrawBufferSemaphore() {
-        return mDrawBufferSemaphore;
-    }
-
     public Exception getException() {
         return mException;
-    }
-
-    public MediaCodec getEncoder() {
-        return mEncoder;
     }
 }
