@@ -29,23 +29,17 @@ public class VideoEffects {
         List<File> fileList;
         try {
             CL.w("切割视频+");
-            fileList = VideoUtil.splitVideo(context, inputVideo, cacheDir.getAbsolutePath(), splitTimeMs, 500, bitrate,speed, 0);
+            fileList = VideoUtil.splitVideo(context, inputVideo, cacheDir.getAbsolutePath(), splitTimeMs, 500, bitrate, speed, 0);
         } catch (MediaCodec.CodecException e) {
             CL.e(e);
             /** Nexus5上-1代表全关键帧*/
-            fileList = VideoUtil.splitVideo(context, inputVideo, cacheDir.getAbsolutePath(), splitTimeMs, 500, bitrate,speed, -1);
+            fileList = VideoUtil.splitVideo(context, inputVideo, cacheDir.getAbsolutePath(), splitTimeMs, 500, bitrate, speed, -1);
         }
         CL.w("切割视频-");
-        File cacheCombineFile = new File(cacheDir, "combine_" + System.currentTimeMillis() + ".tmp");
         CL.w("合并视频+");
-        VideoUtil.combineVideos(fileList, cacheCombineFile.getAbsolutePath());
+        VideoUtil.combineVideos(fileList, outputVideo, oriBitrate, VideoProcessor.DEFAULT_I_FRAME_INTERVAL);
         CL.w("合并视频-");
-        CL.w("视频转码+");
-        VideoProcessor.processVideo(context, cacheCombineFile.getAbsolutePath(), outputVideo, null, null, null, null, null,
-                oriBitrate, VideoProcessor.DEFAULT_I_FRAME_INTERVAL);
-        cacheCombineFile.delete();
-        CL.w("视频转码-");
         long e = System.currentTimeMillis();
-        CL.e("鬼畜已完成,耗时:"+(e-s)/1000f+"s");
+        CL.e("鬼畜已完成,耗时:" + (e - s) / 1000f + "s");
     }
 }

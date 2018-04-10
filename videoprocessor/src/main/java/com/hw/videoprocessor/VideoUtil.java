@@ -70,13 +70,13 @@ public class VideoUtil {
      * @return
      * @throws IOException
      */
-    public static void combineVideos(List<File> inputVideos, String outputVideo) throws Exception {
+    public static void combineVideos(List<File> inputVideos, String outputVideo,Integer bitrate,Integer iFrameInterval) throws Exception {
         if (inputVideos == null || inputVideos.size() == 0) {
             return;
         }
         MediaMetadataRetriever retriever = new MediaMetadataRetriever();
         retriever.setDataSource(inputVideos.get(0).getAbsolutePath());
-        int bitrate = Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_BITRATE));
+        int combineBitrate = bitrate==null?Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_BITRATE)):bitrate;
         MediaExtractor extractor = new MediaExtractor();
         extractor.setDataSource(inputVideos.get(0).getAbsolutePath());
         int videoIndex = selectTrack(extractor, false);
@@ -102,16 +102,12 @@ public class VideoUtil {
                 audioIndex = selectTrack(extractor, true);
             }
             if (audioExist) {
-                long  s = System.currentTimeMillis();
                 audioFrameTimeUs = writeAudioTrack(extractor, mediaMuxer, audioMuxerIndex, null, null, baseFrameTimeUs);
                 extractor.unselectTrack(audioIndex);
-                long e = System.currentTimeMillis();
-                CL.e("writeAudioTrack:"+(e-s)+"ms");
             }
-            long  s = System.currentTimeMillis();
-            videoFrameTimeUs = appendVideoTrack(extractor, mediaMuxer, videoMuxerIndex, null, null, baseFrameTimeUs, bitrate, i == 0, false);
-            long e = System.currentTimeMillis();
-            CL.e("appendVideoTrack:"+(e-s)+"ms");
+            videoFrameTimeUs = appendVideoTrack(extractor, mediaMuxer, videoMuxerIndex,
+                    null, null, baseFrameTimeUs, combineBitrate,
+                    iFrameInterval,i == 0, false);
             baseFrameTimeUs = videoFrameTimeUs > audioFrameTimeUs ? videoFrameTimeUs : audioFrameTimeUs;
             CL.i("片段" + i + "已合成,audioFrameTime:" + audioFrameTimeUs / 1000f + " videoFrameTime:" + videoFrameTimeUs / 1000f);
             baseFrameTimeUs += 33 * 1000;
@@ -131,7 +127,9 @@ public class VideoUtil {
                 audioFrameTimeUs = writeAudioTrack(extractor, mediaMuxer, audioMuxerIndex, null, null, baseFrameTimeUs);
                 extractor.unselectTrack(audioIndex);
             }
-            videoFrameTimeUs = appendVideoTrack(extractor, mediaMuxer, videoMuxerIndex, null, null, baseFrameTimeUs, bitrate, false, i == inputVideos.size() - 1);
+            videoFrameTimeUs = appendVideoTrack(extractor, mediaMuxer, videoMuxerIndex, null, null,
+                    baseFrameTimeUs, combineBitrate, iFrameInterval,false,
+                    i == inputVideos.size() - 1);
             baseFrameTimeUs = videoFrameTimeUs > audioFrameTimeUs ? videoFrameTimeUs : audioFrameTimeUs;
             CL.i("反序片段" + i + "已合成,audioFrameTime:" + audioFrameTimeUs / 1000f + " videoFrameTime:" + videoFrameTimeUs / 1000f);
             baseFrameTimeUs += 33 * 1000;
@@ -208,7 +206,8 @@ public class VideoUtil {
     }
 
     static long appendVideoTrack(MediaExtractor extractor, MediaMuxer mediaMuxer, int muxerVideoTrackIndex,
-                                 Integer startTimeUs, Integer endTimeUs, long baseMuxerFrameTimeUs, int bitrate, boolean isFirst, boolean isLast) throws Exception {
+                                 Integer startTimeUs, Integer endTimeUs, long baseMuxerFrameTimeUs, int bitrate,int iFrameInterval,
+                                 boolean isFirst, boolean isLast) throws Exception {
         int videoTrack = selectTrack(extractor, false);
         extractor.selectTrack(videoTrack);
         if (startTimeUs == null) {
@@ -223,7 +222,7 @@ public class VideoUtil {
 
         AtomicBoolean decodeDone = new AtomicBoolean(false);
         VideoAppendEncodeThread encodeThread = new VideoAppendEncodeThread(extractor, mediaMuxer, bitrate,
-                resultWidth, resultHeight, VideoProcessor.DEFAULT_I_FRAME_INTERVAL, videoTrack,
+                resultWidth, resultHeight,iFrameInterval, videoTrack,
                 decodeDone,baseMuxerFrameTimeUs,isFirst,isLast,muxerVideoTrackIndex);
         VideoDecodeThread decodeThread = new VideoDecodeThread(encodeThread, extractor, startTimeUs==null?null:startTimeUs/1000,
                 endTimeUs==null?null:endTimeUs/1000,
