@@ -50,16 +50,16 @@ public class VideoProcessor {
 
 
     public static void scaleVideo(Context context, String input, String output,
-                                  int outWidth, int outHeight) throws IOException {
+                                  int outWidth, int outHeight) throws Exception {
         processVideo(context, input, output, outWidth, outHeight, null, null, null, null, null);
     }
 
-    public static void cutVideo(Context context, String input, String output, int startTimeMs, int endTimeMs) throws IOException {
+    public static void cutVideo(Context context, String input, String output, int startTimeMs, int endTimeMs) throws Exception {
         processVideo(context, input, output, null, null, startTimeMs, endTimeMs, null, null, null);
 
     }
 
-    public static void changeVideoSpeed(Context context, String input, String output, float speed) throws IOException {
+    public static void changeVideoSpeed(Context context, String input, String output, float speed) throws Exception {
         processVideo(context, input, output, null, null, null, null, speed, null, null);
 
     }
@@ -68,7 +68,7 @@ public class VideoProcessor {
     /**
      * 对视频先检查，如果不是全关键帧，先处理成所有帧都是关键帧，再逆序
      */
-    public static void revertVideo(Context context, String input, String output) throws IOException {
+    public static void revertVideo(Context context, String input, String output) throws Exception {
         File tempFile = new File(context.getCacheDir(), System.currentTimeMillis() + ".temp");
         File temp2File = new File(context.getCacheDir(), System.currentTimeMillis() + ".temp2");
         try {
@@ -119,16 +119,12 @@ public class VideoProcessor {
 
     /**
      * 支持裁剪缩放快慢放
-     * 注意：会在当前线程创建GL环境，所以不能在主线程进行
      */
     public static void processVideo(Context context, String input, String output,
                                     @Nullable Integer outWidth, @Nullable Integer outHeight,
                                     @Nullable Integer startTimeMs, @Nullable Integer endTimeMs,
                                     @Nullable Float speed, @Nullable Integer bitrate,
-                                    @Nullable Integer iFrameInterval) throws IOException {
-        if (Thread.currentThread().getId() == 1) {
-            throw new RuntimeException("无法在主线程执行!");
-        }
+                                    @Nullable Integer iFrameInterval) throws Exception {
 
         MediaMetadataRetriever retriever = new MediaMetadataRetriever();
         retriever.setDataSource(input);
@@ -161,7 +157,6 @@ public class VideoProcessor {
         int muxerAudioTrackIndex = 0;
         if (audioIndex >= 0) {
             MediaFormat audioTrackFormat = extractor.getTrackFormat(audioIndex);
-
             if (startTimeMs != null || endTimeMs != null || speed != null) {
                 long durationUs = audioTrackFormat.getLong(MediaFormat.KEY_DURATION);
                 if (startTimeMs != null && endTimeMs != null) {
@@ -181,7 +176,6 @@ public class VideoProcessor {
             extractor.seekTo(0, MediaExtractor.SEEK_TO_PREVIOUS_SYNC);
         }
 
-
         AtomicBoolean decodeDone = new AtomicBoolean(false);
         CountDownLatch muxerStartLatch = new CountDownLatch(1);
         VideoEncodeThread encodeThread = new VideoEncodeThread(extractor, mediaMuxer, bitrate,
@@ -195,9 +189,13 @@ public class VideoProcessor {
         encodeThread.start();
         audioProcessThread.start();
         try {
+            long s = System.currentTimeMillis();
             decodeThread.join();
             encodeThread.join();
+            long e1 = System.currentTimeMillis();
             audioProcessThread.join();
+            long e2 = System.currentTimeMillis();
+            CL.w(String.format("编解码:%dms,音频:%dms", e1 - s, e2 - s));
         } catch (InterruptedException e) {
             e.printStackTrace();
         }
@@ -207,6 +205,13 @@ public class VideoProcessor {
             extractor.release();
         } catch (Exception e2) {
             CL.e(e2);
+        }
+        if (encodeThread.getException() != null) {
+            throw encodeThread.getException();
+        } else if (decodeThread.getException() != null) {
+            throw decodeThread.getException();
+        } else if (audioProcessThread.getException() != null) {
+            throw audioProcessThread.getException();
         }
     }
 

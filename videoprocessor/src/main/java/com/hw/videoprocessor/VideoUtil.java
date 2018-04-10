@@ -33,7 +33,10 @@ public class VideoUtil {
      * @param minSliceSize 如果最后一个片段小于一定值,就合并到前一个片段
      * @return
      */
-    public static List<File> splitVideo(Context context, String inputVideo, String outputDir, int splitTimeMs, int minSliceSize, Integer bitrate, Integer iFrameInterval) throws IOException {
+    public static List<File> splitVideo(Context context, String inputVideo, String outputDir,
+                                        int splitTimeMs, int minSliceSize,
+                                        Integer bitrate,float speed, Integer iFrameInterval) throws Exception {
+        splitTimeMs*=speed;
         MediaMetadataRetriever retriever = new MediaMetadataRetriever();
         retriever.setDataSource(inputVideo);
         int durationMs = Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION));
@@ -56,7 +59,7 @@ public class VideoUtil {
         for (Pair<Integer, Integer> pair : sliceList) {
             File file = new File(outputDir, pair.first + ".mp4");
             VideoProcessor.processVideo(context, inputVideo, file.getAbsolutePath(), null, null, pair.first,
-                    pair.second, null, bitrate, iFrameInterval);
+                    pair.second, speed, bitrate, iFrameInterval);
             fileList.add(file);
         }
         return fileList;

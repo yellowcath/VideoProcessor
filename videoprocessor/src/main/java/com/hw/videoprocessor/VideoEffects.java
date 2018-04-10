@@ -6,7 +6,6 @@ import android.media.MediaMetadataRetriever;
 import com.hw.videoprocessor.util.CL;
 
 import java.io.File;
-import java.io.IOException;
 import java.util.List;
 
 /**
@@ -18,7 +17,7 @@ public class VideoEffects {
     /**
      * 鬼畜效果，先按speed倍率对视频进行加速，然后按splitTimeMs分割视频，并对每一个片段做正放+倒放
      */
-    public static void doKichiku(Context context, String inputVideo, String outputVideo, float speed, int splitTimeMs) throws IOException {
+    public static void doKichiku(Context context, String inputVideo, String outputVideo, float speed, int splitTimeMs) throws Exception {
         long s = System.currentTimeMillis();
         File cacheDir = new File(context.getCacheDir(), "kichiku_" + System.currentTimeMillis());
         cacheDir.mkdir();
@@ -26,20 +25,15 @@ public class VideoEffects {
         retriever.setDataSource(inputVideo);
         int oriBitrate = Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_BITRATE));
         retriever.release();
-        CL.w("加速视频+");
-        File speedVideo = new File(cacheDir, "speed_" + speed + ".tmp");
-        VideoProcessor.processVideo(context, inputVideo, speedVideo.getAbsolutePath(), null, null, null, null,
-                speed, null, null);
-        CL.w("加速视频-");
         int bitrate = VideoUtil.getBitrateForAllKeyFrameVideo(inputVideo);
         List<File> fileList;
         try {
             CL.w("切割视频+");
-            fileList = VideoUtil.splitVideo(context, speedVideo.getAbsolutePath(), cacheDir.getAbsolutePath(), splitTimeMs, 500, bitrate, 0);
+            fileList = VideoUtil.splitVideo(context, inputVideo, cacheDir.getAbsolutePath(), splitTimeMs, 500, bitrate,speed, 0);
         } catch (MediaCodec.CodecException e) {
             CL.e(e);
             /** Nexus5上-1代表全关键帧*/
-            fileList = VideoUtil.splitVideo(context, speedVideo.getAbsolutePath(), cacheDir.getAbsolutePath(), splitTimeMs, 500, bitrate, -1);
+            fileList = VideoUtil.splitVideo(context, inputVideo, cacheDir.getAbsolutePath(), splitTimeMs, 500, bitrate,speed, -1);
         }
         CL.w("切割视频-");
         File cacheCombineFile = new File(cacheDir, "combine_" + System.currentTimeMillis() + ".tmp");
