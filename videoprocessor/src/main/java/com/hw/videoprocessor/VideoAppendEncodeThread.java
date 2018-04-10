@@ -21,12 +21,11 @@ import static com.hw.videoprocessor.VideoProcessor.TIMEOUT_USEC;
  * Created by huangwei on 2018/4/8 0008.
  */
 
-public class VideoEncodeThread extends Thread implements IVideoEncodeThread {
+public class VideoAppendEncodeThread extends Thread implements IVideoEncodeThread {
 
     private MediaCodec mEncoder;
     private MediaMuxer mMuxer;
     private AtomicBoolean mDecodeDone;
-    private CountDownLatch mMuxerStartLatch;
     private Exception mException;
     private int mBitrate;
     private int mResultWidth;
@@ -37,16 +36,20 @@ public class VideoEncodeThread extends Thread implements IVideoEncodeThread {
     //    private volatile InputSurface mInputSurface;
     private volatile CountDownLatch mEglContextLatch;
     private volatile Surface mSurface;
+    private long mBaseMuxerFrameTimeUs;
+    private boolean mIsFirst;
+    private boolean mIsLast;
+    private long mLastFrametimeUs;
+    private int mMuxerVideoTrackIndex;
 
 
-    public VideoEncodeThread(MediaExtractor extractor, MediaMuxer muxer,
-                             int bitrate, int resultWidth, int resultHeight, int iFrameInterval,
-                             int videoIndex,
-                             AtomicBoolean decodeDone, CountDownLatch muxerStartLatch) {
+    public VideoAppendEncodeThread(MediaExtractor extractor, MediaMuxer muxer,
+                                   int bitrate, int resultWidth, int resultHeight, int iFrameInterval,
+                                   int videoIndex, AtomicBoolean decodeDone,
+                                   long baseMuxerFrameTimeUs, boolean isFirst, boolean isLast,int muxerVideoTrackIndex) {
         super("VideoProcessEncodeThread");
         mMuxer = muxer;
         mDecodeDone = decodeDone;
-        mMuxerStartLatch = muxerStartLatch;
         mExtractor = extractor;
         mBitrate = bitrate;
         mResultHeight = resultHeight;
@@ -54,6 +57,11 @@ public class VideoEncodeThread extends Thread implements IVideoEncodeThread {
         mIFrameInterval = iFrameInterval;
         mVideoIndex = videoIndex;
         mEglContextLatch = new CountDownLatch(1);
+        mBaseMuxerFrameTimeUs = baseMuxerFrameTimeUs;
+        mLastFrametimeUs = baseMuxerFrameTimeUs;
+        mIsFirst = isFirst;
+        mIsLast = isLast;
+        mMuxerVideoTrackIndex = muxerVideoTrackIndex;
     }
 
     @Override
@@ -94,7 +102,6 @@ public class VideoEncodeThread extends Thread implements IVideoEncodeThread {
         boolean signalEncodeEnd = false;
         MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
         int encodeTryAgainCount = 0;
-        int videoTrackIndex = -5;
         //开始编码
         //输出
         while (true) {
@@ -118,11 +125,6 @@ public class VideoEncodeThread extends Thread implements IVideoEncodeThread {
                 continue;
             } else if (outputBufferIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
                 MediaFormat newFormat = mEncoder.getOutputFormat();
-                if (videoTrackIndex == -5) {
-                    videoTrackIndex = mMuxer.addTrack(newFormat);
-                    mMuxer.start();
-                    mMuxerStartLatch.countDown();
-                }
                 CL.i("encode newFormat = " + newFormat);
             } else if (outputBufferIndex < 0) {
                 //ignore
@@ -130,12 +132,23 @@ public class VideoEncodeThread extends Thread implements IVideoEncodeThread {
             } else {
                 //编码数据可用
                 ByteBuffer outputBuffer = mEncoder.getOutputBuffer(outputBufferIndex);
+                info.presentationTimeUs += mBaseMuxerFrameTimeUs;
+                if (!mIsFirst && info.flags == MediaCodec.BUFFER_FLAG_CODEC_CONFIG) {
+                    //非第一个片段跳过写入Config
+                    continue;
+                }
+                if (!mIsLast && info.flags == MediaCodec.BUFFER_FLAG_END_OF_STREAM) {
+                    //非最后一个片段不写入End
+                    CL.i("encoderDone");
+                    mEncoder.releaseOutputBuffer(outputBufferIndex, false);
+                    break;
+                }
                 CL.i("writeSampleData,size:" + info.size + " time:" + info.presentationTimeUs / 1000);
                 if (info.flags == MediaCodec.BUFFER_FLAG_END_OF_STREAM && info.presentationTimeUs < 0) {
                     info.presentationTimeUs = 0;
                 }
-                mMuxer.writeSampleData(videoTrackIndex, outputBuffer, info);
-
+                mMuxer.writeSampleData(mMuxerVideoTrackIndex, outputBuffer, info);
+                mLastFrametimeUs = info.presentationTimeUs;
                 mEncoder.releaseOutputBuffer(outputBufferIndex, false);
                 if (info.flags == MediaCodec.BUFFER_FLAG_END_OF_STREAM) {
                     CL.i("encoderDone");
@@ -157,5 +170,9 @@ public class VideoEncodeThread extends Thread implements IVideoEncodeThread {
 
     public Exception getException() {
         return mException;
+    }
+
+    public long getLastFrametimeUs() {
+        return mLastFrametimeUs;
     }
 }

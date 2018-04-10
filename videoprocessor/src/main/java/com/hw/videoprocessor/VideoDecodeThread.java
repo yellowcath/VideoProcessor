@@ -29,11 +29,11 @@ public class VideoDecodeThread extends Thread {
     private AtomicBoolean mDecodeDone;
     private Exception mException;
     private int mVideoIndex;
-    private VideoEncodeThread mVideoEncodeThread;
+    private IVideoEncodeThread mVideoEncodeThread;
     private InputSurface mInputSurface;
     private OutputSurface mOutputSurface;
 
-    public VideoDecodeThread(VideoEncodeThread videoEncodeThread, MediaExtractor extractor,
+    public VideoDecodeThread(IVideoEncodeThread videoEncodeThread, MediaExtractor extractor,
                              @Nullable Integer startTimeMs, @Nullable Integer endTimeMs,
                              @Nullable Float speed,
                              int videoIndex, AtomicBoolean decodeDone
