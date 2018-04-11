@@ -12,6 +12,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 
@@ -395,5 +396,32 @@ public class AudioUtil {
         }
 
         return true;
+    }
+
+    public static void reversePcm(String srcPath, String dstPath) throws IOException {
+        final int bit = 16;
+        RandomAccessFile srcFile = null;
+        FileOutputStream fos = null;
+        try {
+            srcFile = new RandomAccessFile(srcPath, "r");
+            fos = new FileOutputStream(dstPath);
+            int step = bit / 8;
+            long len = srcFile.length();
+            long offset = len - step;
+            byte temp[] = new byte[step];
+            while (offset >= 0) {
+                srcFile.seek(offset);
+                srcFile.read(temp);
+                fos.write(temp);
+                offset-=step;
+            }
+        } finally {
+            if (srcFile != null) {
+                srcFile.close();
+            }
+            if (fos != null) {
+                fos.close();
+            }
+        }
     }
 }
