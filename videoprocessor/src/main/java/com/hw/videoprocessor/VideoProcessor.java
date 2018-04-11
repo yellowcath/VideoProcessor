@@ -51,16 +51,16 @@ public class VideoProcessor {
 
     public static void scaleVideo(Context context, String input, String output,
                                   int outWidth, int outHeight) throws Exception {
-        processVideo(context, input, output, outWidth, outHeight, null, null, null, null, null,null);
+        processVideo(context, input, output, outWidth, outHeight, null, null, null, null, null, null);
     }
 
     public static void cutVideo(Context context, String input, String output, int startTimeMs, int endTimeMs) throws Exception {
-        processVideo(context, input, output, null, null, startTimeMs, endTimeMs, null, null, null,null);
+        processVideo(context, input, output, null, null, startTimeMs, endTimeMs, null, null, null, null);
 
     }
 
     public static void changeVideoSpeed(Context context, String input, String output, float speed) throws Exception {
-        processVideo(context, input, output, null, null, null, null, speed, null,null, null);
+        processVideo(context, input, output, null, null, null, null, speed, null, null, null);
 
     }
 
@@ -100,16 +100,16 @@ public class VideoProcessor {
                 int oriBitrate = Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_BITRATE));
                 int duration = Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION));
                 try {
-                    processVideo(context, input, tempFile.getAbsolutePath(), null, null, null, null, null, oriBitrate * bitrateMultiple, null,0);
+                    processVideo(context, input, tempFile.getAbsolutePath(), null, null, null, null, null, oriBitrate * bitrateMultiple, null, 0);
                 } catch (MediaCodec.CodecException e) {
                     CL.e(e);
                     /** Nexus5上-1代表全关键帧*/
-                    processVideo(context, input, tempFile.getAbsolutePath(), null, null, null, null, null, oriBitrate * bitrateMultiple, null,-1);
+                    processVideo(context, input, tempFile.getAbsolutePath(), null, null, null, null, null, oriBitrate * bitrateMultiple, null, -1);
                 }
                 revertVideoNoDecode(tempFile.getAbsolutePath(), temp2File.getAbsolutePath());
                 int oriIFrameInterval = (int) (keyFrameCount / (duration / 1000f));
                 oriIFrameInterval = oriIFrameInterval == 0 ? 1 : oriIFrameInterval;
-                processVideo(context, temp2File.getAbsolutePath(), output, null, null, null, null, null, oriBitrate, null,oriIFrameInterval);
+                processVideo(context, temp2File.getAbsolutePath(), output, null, null, null, null, null, oriBitrate, null, oriIFrameInterval);
             }
         } finally {
             tempFile.delete();
@@ -124,7 +124,7 @@ public class VideoProcessor {
                                     @Nullable Integer outWidth, @Nullable Integer outHeight,
                                     @Nullable Integer startTimeMs, @Nullable Integer endTimeMs,
                                     @Nullable Float speed, @Nullable Integer bitrate,
-                                    @Nullable Integer frameRate,@Nullable Integer iFrameInterval) throws Exception {
+                                    @Nullable Integer frameRate, @Nullable Integer iFrameInterval) throws Exception {
 
         MediaMetadataRetriever retriever = new MediaMetadataRetriever();
         retriever.setDataSource(input);
@@ -179,7 +179,7 @@ public class VideoProcessor {
         AtomicBoolean decodeDone = new AtomicBoolean(false);
         CountDownLatch muxerStartLatch = new CountDownLatch(1);
         VideoEncodeThread encodeThread = new VideoEncodeThread(extractor, mediaMuxer, bitrate,
-                resultWidth, resultHeight, iFrameInterval,frameRate, videoIndex,
+                resultWidth, resultHeight, iFrameInterval, frameRate == null ? DEFAULT_FRAME_RATE : frameRate, videoIndex,
                 decodeDone, muxerStartLatch);
         VideoDecodeThread decodeThread = new VideoDecodeThread(encodeThread, extractor, startTimeMs, endTimeMs,
                 speed, videoIndex, decodeDone);

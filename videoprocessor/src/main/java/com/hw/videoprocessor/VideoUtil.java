@@ -32,8 +32,8 @@ public class VideoUtil {
      */
     public static List<File> splitVideo(Context context, String inputVideo, String outputDir,
                                         int splitTimeMs, int minSliceSize,
-                                        Integer bitrate,float speed, Integer iFrameInterval) throws Exception {
-        splitTimeMs*=speed;
+                                        Integer bitrate, float speed, Integer iFrameInterval) throws Exception {
+        splitTimeMs *= speed;
         MediaMetadataRetriever retriever = new MediaMetadataRetriever();
         retriever.setDataSource(inputVideo);
         int durationMs = Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION));
@@ -56,7 +56,7 @@ public class VideoUtil {
         for (Pair<Integer, Integer> pair : sliceList) {
             File file = new File(outputDir, pair.first + ".mp4");
             VideoProcessor.processVideo(context, inputVideo, file.getAbsolutePath(), null, null, pair.first,
-                    pair.second, speed, bitrate, null,iFrameInterval);
+                    pair.second, speed, bitrate, null, iFrameInterval);
             fileList.add(file);
         }
         return fileList;
@@ -70,13 +70,13 @@ public class VideoUtil {
      * @return
      * @throws IOException
      */
-    public static void combineVideos(List<File> inputVideos, String outputVideo,Integer bitrate,Integer iFrameInterval) throws Exception {
+    public static void combineVideos(List<File> inputVideos, String outputVideo, Integer bitrate, Integer iFrameInterval) throws Exception {
         if (inputVideos == null || inputVideos.size() == 0) {
             return;
         }
         MediaMetadataRetriever retriever = new MediaMetadataRetriever();
         retriever.setDataSource(inputVideos.get(0).getAbsolutePath());
-        int combineBitrate = bitrate==null?Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_BITRATE)):bitrate;
+        int combineBitrate = bitrate == null ? Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_BITRATE)) : bitrate;
         MediaExtractor extractor = new MediaExtractor();
         extractor.setDataSource(inputVideos.get(0).getAbsolutePath());
         int videoIndex = selectTrack(extractor, false);
@@ -107,18 +107,18 @@ public class VideoUtil {
             }
             videoFrameTimeUs = appendVideoTrack(extractor, mediaMuxer, videoMuxerIndex,
                     null, null, baseFrameTimeUs, combineBitrate,
-                    iFrameInterval,i == 0, false);
+                    iFrameInterval, i == 0, false);
             baseFrameTimeUs = videoFrameTimeUs > audioFrameTimeUs ? videoFrameTimeUs : audioFrameTimeUs;
             CL.i("片段" + i + "已合成,audioFrameTime:" + audioFrameTimeUs / 1000f + " videoFrameTime:" + videoFrameTimeUs / 1000f);
             baseFrameTimeUs += 33 * 1000;
             extractor.release();
 
             //反序当前片段
-            long  s1 = System.currentTimeMillis();
+            long s1 = System.currentTimeMillis();
             String out = inputVideos.get(i).getAbsolutePath() + ".rev";
             VideoProcessor.revertVideoNoDecode(inputVideos.get(i).getAbsolutePath(), out);
             long e1 = System.currentTimeMillis();
-            CL.e("revertVideoNoDecode:"+(e1-s1)+"ms");
+            CL.e("revertVideoNoDecode:" + (e1 - s1) + "ms");
             //合并反序片段
             extractor = new MediaExtractor();
             extractor.setDataSource(out);
@@ -128,7 +128,7 @@ public class VideoUtil {
                 extractor.unselectTrack(audioIndex);
             }
             videoFrameTimeUs = appendVideoTrack(extractor, mediaMuxer, videoMuxerIndex, null, null,
-                    baseFrameTimeUs, combineBitrate, iFrameInterval,false,
+                    baseFrameTimeUs, combineBitrate, iFrameInterval, false,
                     i == inputVideos.size() - 1);
             baseFrameTimeUs = videoFrameTimeUs > audioFrameTimeUs ? videoFrameTimeUs : audioFrameTimeUs;
             CL.i("反序片段" + i + "已合成,audioFrameTime:" + audioFrameTimeUs / 1000f + " videoFrameTime:" + videoFrameTimeUs / 1000f);
@@ -206,7 +206,7 @@ public class VideoUtil {
     }
 
     static long appendVideoTrack(MediaExtractor extractor, MediaMuxer mediaMuxer, int muxerVideoTrackIndex,
-                                 Integer startTimeUs, Integer endTimeUs, long baseMuxerFrameTimeUs, int bitrate,int iFrameInterval,
+                                 Integer startTimeUs, Integer endTimeUs, long baseMuxerFrameTimeUs, int bitrate, int iFrameInterval,
                                  boolean isFirst, boolean isLast) throws Exception {
         int videoTrack = selectTrack(extractor, false);
         extractor.selectTrack(videoTrack);
@@ -222,10 +222,10 @@ public class VideoUtil {
 
         AtomicBoolean decodeDone = new AtomicBoolean(false);
         VideoAppendEncodeThread encodeThread = new VideoAppendEncodeThread(extractor, mediaMuxer, bitrate,
-                resultWidth, resultHeight,iFrameInterval, videoTrack,
-                decodeDone,baseMuxerFrameTimeUs,isFirst,isLast,muxerVideoTrackIndex);
-        VideoDecodeThread decodeThread = new VideoDecodeThread(encodeThread, extractor, startTimeUs==null?null:startTimeUs/1000,
-                endTimeUs==null?null:endTimeUs/1000,
+                resultWidth, resultHeight, iFrameInterval, videoTrack,
+                decodeDone, baseMuxerFrameTimeUs, isFirst, isLast, muxerVideoTrackIndex);
+        VideoDecodeThread decodeThread = new VideoDecodeThread(encodeThread, extractor, startTimeUs == null ? null : startTimeUs / 1000,
+                endTimeUs == null ? null : endTimeUs / 1000,
                 null, videoTrack, decodeDone);
         decodeThread.start();
         encodeThread.start();
@@ -296,6 +296,21 @@ public class VideoUtil {
         int oriBitrate = Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_BITRATE));
         retriever.release();
         return (int) (bitrateMultiple * oriBitrate);
+    }
+
+    public static int getFrameRate(String videoPath) {
+        MediaExtractor extractor = new MediaExtractor();
+        try {
+            extractor.setDataSource(videoPath);
+            int trackIndex = VideoUtil.selectTrack(extractor, false);
+            MediaFormat format = extractor.getTrackFormat(trackIndex);
+            return format.containsKey(MediaFormat.KEY_FRAME_RATE) ? format.getInteger(MediaFormat.KEY_FRAME_RATE) : -1;
+        } catch (IOException e) {
+            CL.e(e);
+            return -1;
+        } finally {
+            extractor.release();
+        }
     }
 
     public static void seekToLastFrame(MediaExtractor extractor, int trackIndex, int durationMs) {
