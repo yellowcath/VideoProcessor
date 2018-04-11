@@ -56,7 +56,7 @@ public class VideoUtil {
         for (Pair<Integer, Integer> pair : sliceList) {
             File file = new File(outputDir, pair.first + ".mp4");
             VideoProcessor.processVideo(context, inputVideo, file.getAbsolutePath(), null, null, pair.first,
-                    pair.second, speed, bitrate, iFrameInterval);
+                    pair.second, speed, bitrate, null,iFrameInterval);
             fileList.add(file);
         }
         return fileList;

@@ -32,6 +32,7 @@ public class VideoEncodeThread extends Thread implements IVideoEncodeThread {
     private int mResultWidth;
     private int mResultHeight;
     private int mIFrameInterval;
+    private int mFrameRate;
     private MediaExtractor mExtractor;
     private int mVideoIndex;
     //    private volatile InputSurface mInputSurface;
@@ -41,7 +42,7 @@ public class VideoEncodeThread extends Thread implements IVideoEncodeThread {
 
     public VideoEncodeThread(MediaExtractor extractor, MediaMuxer muxer,
                              int bitrate, int resultWidth, int resultHeight, int iFrameInterval,
-                             int videoIndex,
+                             int frameRate, int videoIndex,
                              AtomicBoolean decodeDone, CountDownLatch muxerStartLatch) {
         super("VideoProcessEncodeThread");
         mMuxer = muxer;
@@ -53,6 +54,7 @@ public class VideoEncodeThread extends Thread implements IVideoEncodeThread {
         mResultWidth = resultWidth;
         mIFrameInterval = iFrameInterval;
         mVideoIndex = videoIndex;
+        mFrameRate = frameRate;
         mEglContextLatch = new CountDownLatch(1);
     }
 
@@ -75,7 +77,12 @@ public class VideoEncodeThread extends Thread implements IVideoEncodeThread {
     private void doEncode() throws IOException {
         MediaFormat inputFormat = mExtractor.getTrackFormat(mVideoIndex);
         //初始化编码器
-        int frameRate = inputFormat.containsKey(MediaFormat.KEY_FRAME_RATE) ? inputFormat.getInteger(inputFormat.KEY_FRAME_RATE) : DEFAULT_FRAME_RATE;
+        int frameRate;
+        if (mFrameRate > 0) {
+            frameRate = mFrameRate;
+        } else {
+            frameRate = inputFormat.containsKey(MediaFormat.KEY_FRAME_RATE) ? inputFormat.getInteger(inputFormat.KEY_FRAME_RATE) : DEFAULT_FRAME_RATE;
+        }
         MediaFormat outputFormat = MediaFormat.createVideoFormat(MIME_TYPE, mResultWidth, mResultHeight);
         outputFormat.setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface);
         outputFormat.setInteger(MediaFormat.KEY_BIT_RATE, mBitrate);

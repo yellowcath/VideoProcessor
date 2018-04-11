@@ -54,6 +54,7 @@ public class AacTest {
 
         AudioUtil.decodeToPCM(aacFile.getAbsolutePath(), pcmFile.getAbsolutePath(), null, null);
         AudioUtil.stereoToMonoSimple(pcmFile.getAbsolutePath(), pcmFile2.getAbsolutePath(), channelCount);
+
         AudioUtil.copyFile(pcmFile2.getAbsolutePath(), "/mnt/sdcard/mo.pcm");
         AudioUtil.reSamplePcm(pcmFile2.getAbsolutePath(), pcmFile3.getAbsolutePath(), sampleRate, 44100, 1);
         AudioUtil.copyFile(pcmFile3.getAbsolutePath(), "/mnt/sdcard/re.pcm");
