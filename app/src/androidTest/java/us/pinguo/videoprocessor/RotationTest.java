@@ -29,7 +29,7 @@ public class RotationTest {
         int rotation = Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION));
         System.out.println("VideoRotation:"+rotation);
         VideoProcessor.processVideo(context,videoFile.getAbsolutePath(),outFile.getAbsolutePath(),null,null,null,null,null,
-                1000000,null);
+                1000000,null,null);
         retriever.setDataSource(outFile.getAbsolutePath());
         rotation = Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION));
         System.out.println("processed VideoRotation:"+rotation);

@@ -13,6 +13,7 @@ import android.support.annotation.IntRange;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
 import android.util.Pair;
+import com.hw.videoprocessor.util.AudioFadeUtil;
 import com.hw.videoprocessor.util.AudioUtil;
 import com.hw.videoprocessor.util.CL;
 import com.hw.videoprocessor.util.PcmToWavUtil;
@@ -510,7 +511,8 @@ public class VideoProcessor {
     public static void mixAudioTrack(Context context, String videoInput, String aacInput, String output,
                                      Integer startTimeMs, Integer endTimeMs,
                                      @IntRange(from = 0, to = 100) int videoVolume,
-                                     @IntRange(from = 0, to = 100) int aacVolume) throws IOException {
+                                     @IntRange(from = 0, to = 100) int aacVolume,
+                                     float fadeInSec,float fadeOutSec) throws IOException {
         File cacheDir = new File(context.getCacheDir(), "pcm");
         cacheDir.mkdir();
 
@@ -586,6 +588,10 @@ public class VideoProcessor {
             if (channelCount == 2) {
                 channelConfig = AudioFormat.CHANNEL_IN_STEREO;
             }
+            //淡入淡出
+            if(fadeInSec!=0 || fadeOutSec!=0){
+                AudioFadeUtil.audioFade(adjustedPcm.getAbsolutePath(),sampleRate,channelCount,fadeInSec,fadeOutSec);
+            }
             //PCM转WAV
             new PcmToWavUtil(adjustedSampleRate, channelConfig, channelCount, AudioFormat.ENCODING_PCM_16BIT).pcmToWav(adjustedPcm.getAbsolutePath(), wavFile.getAbsolutePath());
 
@@ -618,6 +624,10 @@ public class VideoProcessor {
                 channelConfig = AudioFormat.CHANNEL_IN_STEREO;
             }
             wavFile = new File(context.getCacheDir(), adjustedPcm.getName() + ".wav");
+            //淡入淡出
+            if(fadeInSec!=0 || fadeOutSec!=0){
+                AudioFadeUtil.audioFade(adjustedPcm.getAbsolutePath(),sampleRate,channelCount,fadeInSec,fadeOutSec);
+            }
             //PCM转WAV
             new PcmToWavUtil(sampleRate, channelConfig, channelCount, AudioFormat.ENCODING_PCM_16BIT).pcmToWav(adjustedPcm.getAbsolutePath(), wavFile.getAbsolutePath());
         }

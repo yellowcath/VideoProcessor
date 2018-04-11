@@ -432,7 +432,8 @@ public class MainActivity extends AppCompatActivity {
                 try {
                     final String aacPath = new File(getCacheDir(), "test.aac").getAbsolutePath();
                     copyAssets("test.aac", aacPath);
-                    VideoProcessor.mixAudioTrack(getApplicationContext(), selectVideoPath, aacPath, filePath, startMs, endMs, 50, 50);
+                    VideoProcessor.mixAudioTrack(getApplicationContext(), selectVideoPath, aacPath, filePath, startMs, endMs, 50, 50,
+                            1,1);
                     Intent intent = new Intent(MainActivity.this, PreviewActivity.class);
                     intent.putExtra(FILEPATH, filePath);
                     startActivity(intent);
