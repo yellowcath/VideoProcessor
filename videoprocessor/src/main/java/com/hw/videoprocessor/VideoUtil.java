@@ -270,7 +270,7 @@ public class VideoUtil {
      *
      * @return
      */
-    static int getBitrateForAllKeyFrameVideo(String input) throws IOException {
+    public static int getBitrateForAllKeyFrameVideo(String input) throws IOException {
         MediaExtractor extractor = new MediaExtractor();
         extractor.setDataSource(input);
         int trackIndex = VideoUtil.selectTrack(extractor, false);
