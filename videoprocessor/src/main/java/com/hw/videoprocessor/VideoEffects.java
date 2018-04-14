@@ -3,6 +3,7 @@ package com.hw.videoprocessor;
 import android.content.Context;
 import android.media.MediaCodec;
 import android.media.MediaMetadataRetriever;
+import android.support.annotation.Nullable;
 import com.hw.videoprocessor.util.CL;
 
 import java.io.File;
@@ -17,14 +18,16 @@ public class VideoEffects {
     /**
      * 鬼畜效果，先按speed倍率对视频进行加速，然后按splitTimeMs分割视频，并对每一个片段做正放+倒放
      */
-    public static void doKichiku(Context context, String inputVideo, String outputVideo, float speed, int splitTimeMs) throws Exception {
+    public static void doKichiku(Context context, String inputVideo, String outputVideo, @Nullable Integer outBitrate, float speed, int splitTimeMs) throws Exception {
         long s = System.currentTimeMillis();
         File cacheDir = new File(context.getCacheDir(), "kichiku_" + System.currentTimeMillis());
         cacheDir.mkdir();
-        MediaMetadataRetriever retriever = new MediaMetadataRetriever();
-        retriever.setDataSource(inputVideo);
-        int oriBitrate = Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_BITRATE));
-        retriever.release();
+        if (outBitrate == null) {
+            MediaMetadataRetriever retriever = new MediaMetadataRetriever();
+            retriever.setDataSource(inputVideo);
+            outBitrate = Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_BITRATE));
+            retriever.release();
+        }
         int bitrate = VideoUtil.getBitrateForAllKeyFrameVideo(inputVideo);
         List<File> fileList;
         try {
@@ -37,7 +40,7 @@ public class VideoEffects {
         }
         CL.w("切割视频-");
         CL.w("合并视频+");
-        VideoUtil.combineVideos(fileList, outputVideo, oriBitrate, VideoProcessor.DEFAULT_I_FRAME_INTERVAL);
+        VideoUtil.combineVideos(fileList, outputVideo, outBitrate, VideoProcessor.DEFAULT_I_FRAME_INTERVAL);
         CL.w("合并视频-");
         long e = System.currentTimeMillis();
         CL.e("鬼畜已完成,耗时:" + (e - s) / 1000f + "s");
