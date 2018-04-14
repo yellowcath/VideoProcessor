@@ -278,13 +278,13 @@ public class VideoUtil {
         int keyFrameCount = 0;
         int frameCount = 0;
         while (true) {
-            long sampleTime = extractor.getSampleTime();
-            if (sampleTime < 0) {
-                break;
-            }
             int flags = extractor.getSampleFlags();
             if ((flags & MediaExtractor.SAMPLE_FLAG_SYNC) != 0) {
                 keyFrameCount++;
+            }
+            long sampleTime = extractor.getSampleTime();
+            if (sampleTime < 0) {
+                break;
             }
             frameCount++;
             extractor.advance();

@@ -545,7 +545,7 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void run() {
                 try {
-                    VideoProcessor.revertVideo(getApplicationContext(), selectVideoPath, filePath);
+                    VideoProcessor.reverseVideo(getApplicationContext(), selectVideoPath, filePath);
                     Intent intent = new Intent(MainActivity.this, PreviewActivity.class);
                     intent.putExtra(FILEPATH, filePath);
                     startActivity(intent);

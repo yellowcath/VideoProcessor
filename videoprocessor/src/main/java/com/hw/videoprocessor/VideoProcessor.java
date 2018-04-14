@@ -69,7 +69,7 @@ public class VideoProcessor {
     /**
      * 对视频先检查，如果不是全关键帧，先处理成所有帧都是关键帧，再逆序
      */
-    public static void revertVideo(Context context, String input, String output) throws Exception {
+    public static void reverseVideo(Context context, String input, String output) throws Exception {
         File tempFile = new File(context.getCacheDir(), System.currentTimeMillis() + ".temp");
         File temp2File = new File(context.getCacheDir(), System.currentTimeMillis() + ".temp2");
         try {
@@ -80,13 +80,13 @@ public class VideoProcessor {
             int keyFrameCount = 0;
             int frameCount = 0;
             while (true) {
-                long sampleTime = extractor.getSampleTime();
-                if (sampleTime < 0) {
-                    break;
-                }
                 int flags = extractor.getSampleFlags();
                 if ((flags & MediaExtractor.SAMPLE_FLAG_SYNC) != 0) {
                     keyFrameCount++;
+                }
+                long sampleTime = extractor.getSampleTime();
+                if (sampleTime < 0) {
+                    break;
                 }
                 frameCount++;
                 extractor.advance();
