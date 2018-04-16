@@ -46,7 +46,7 @@ public class VideoAppendEncodeThread extends Thread implements IVideoEncodeThrea
     public VideoAppendEncodeThread(MediaExtractor extractor, MediaMuxer muxer,
                                    int bitrate, int resultWidth, int resultHeight, int iFrameInterval,
                                    int videoIndex, AtomicBoolean decodeDone,
-                                   long baseMuxerFrameTimeUs, boolean isFirst, boolean isLast,int muxerVideoTrackIndex) {
+                                   long baseMuxerFrameTimeUs, boolean isFirst, boolean isLast, int muxerVideoTrackIndex) {
         super("VideoProcessEncodeThread");
         mMuxer = muxer;
         mDecodeDone = decodeDone;
@@ -143,12 +143,14 @@ public class VideoAppendEncodeThread extends Thread implements IVideoEncodeThrea
                     mEncoder.releaseOutputBuffer(outputBufferIndex, false);
                     break;
                 }
-                CL.i("writeSampleData,size:" + info.size + " time:" + info.presentationTimeUs / 1000);
                 if (info.flags == MediaCodec.BUFFER_FLAG_END_OF_STREAM && info.presentationTimeUs < 0) {
                     info.presentationTimeUs = 0;
                 }
+                CL.i("writeSampleData,size:" + info.size + " time:" + info.presentationTimeUs / 1000 + " flag:" + info.flags);
                 mMuxer.writeSampleData(mMuxerVideoTrackIndex, outputBuffer, info);
-                mLastFrametimeUs = info.presentationTimeUs;
+                if (mLastFrametimeUs < info.presentationTimeUs) {
+                    mLastFrametimeUs = info.presentationTimeUs;
+                }
                 mEncoder.releaseOutputBuffer(outputBufferIndex, false);
                 if (info.flags == MediaCodec.BUFFER_FLAG_END_OF_STREAM) {
                     CL.i("encoderDone");
