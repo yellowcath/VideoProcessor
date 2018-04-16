@@ -173,10 +173,12 @@ public class VideoDecodeThread extends Thread {
                     }
                     //检查是否需要丢帧
                     long presentationTimeUs = info.presentationTimeUs - videoStartTimeUs;
-                    int remainder = frameIndex % (frameIntervalForDrop + dropCount);
-                    if (frameIntervalForDrop > 0 && (remainder > frameIntervalForDrop || remainder == 0)) {
-                        CL.w("帧率过高，丢帧:" + frameIndex + " timestampMs:" + presentationTimeUs / 1000);
-                        doRender = false;
+                    if (frameIntervalForDrop > 0) {
+                        int remainder = frameIndex % (frameIntervalForDrop + dropCount);
+                        if (remainder > frameIntervalForDrop || remainder == 0) {
+                            CL.w("帧率过高，丢帧:" + frameIndex + " timestampMs:" + presentationTimeUs / 1000);
+                            doRender = false;
+                        }
                     }
                     frameIndex++;
                     mDecoder.releaseOutputBuffer(outputBufferIndex, doRender);
