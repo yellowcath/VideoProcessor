@@ -172,11 +172,10 @@ public class VideoDecodeThread extends Thread {
                         break;
                     }
                     //检查是否需要丢帧
-                    long presentationTimeUs = info.presentationTimeUs - videoStartTimeUs;
                     if (frameIntervalForDrop > 0) {
                         int remainder = frameIndex % (frameIntervalForDrop + dropCount);
                         if (remainder > frameIntervalForDrop || remainder == 0) {
-                            CL.w("帧率过高，丢帧:" + frameIndex + " timestampMs:" + presentationTimeUs / 1000);
+                            CL.w("帧率过高，丢帧:" + frameIndex);
                             doRender = false;
                         }
                     }
@@ -196,10 +195,11 @@ public class VideoDecodeThread extends Thread {
                                 CL.i("videoStartTime:" + videoStartTimeUs / 1000);
                             }
                             mOutputSurface.drawImage(false);
-                            long presentationTimeNs = presentationTimeUs * 1000;
+                            long presentationTimeNs = (info.presentationTimeUs - videoStartTimeUs) * 1000;
                             if (mSpeed != null) {
                                 presentationTimeNs /= mSpeed;
                             }
+                            CL.i("drawImage,setPresentationTimeMs:" + presentationTimeNs / 1000 / 1000);
                             mInputSurface.setPresentationTime(presentationTimeNs);
                             mInputSurface.swapBuffers();
                             break;
