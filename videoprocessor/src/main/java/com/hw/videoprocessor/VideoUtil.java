@@ -290,14 +290,14 @@ public class VideoUtil {
             extractor.advance();
         }
         extractor.release();
-        if (frameCount == keyFrameCount) {
-            return 1;
-        }
         float bitrateMultiple = (frameCount - keyFrameCount) / (float) keyFrameCount;
         MediaMetadataRetriever retriever = new MediaMetadataRetriever();
         retriever.setDataSource(input);
         int oriBitrate = Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_BITRATE));
         retriever.release();
+        if (frameCount == keyFrameCount) {
+            return oriBitrate;
+        }
         return (int) (bitrateMultiple * oriBitrate);
     }
 
