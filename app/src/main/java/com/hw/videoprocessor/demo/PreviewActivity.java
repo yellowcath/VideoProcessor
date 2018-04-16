@@ -1,5 +1,8 @@
 package com.hw.videoprocessor.demo;
 
+import android.media.MediaExtractor;
+import android.media.MediaFormat;
+import android.media.MediaMetadataRetriever;
 import android.media.MediaPlayer;
 import android.net.Uri;
 import android.os.Bundle;
@@ -9,6 +12,7 @@ import android.view.MenuItem;
 import android.widget.SeekBar;
 import android.widget.TextView;
 import android.widget.VideoView;
+import com.hw.videoprocessor.VideoUtil;
 
 /**
  * Created by Bhuvnesh on 08-03-2017.
@@ -33,8 +37,25 @@ public class PreviewActivity extends AppCompatActivity {
         TextView tvInstruction = (TextView) findViewById(R.id.tvInstruction);
         String filePath = getIntent().getStringExtra(FILEPATH);
 
-
-        tvInstruction.setText("Video stored at path " + filePath);
+        String videoInfo = "";
+        try {
+            MediaMetadataRetriever retriever = new MediaMetadataRetriever();
+            retriever.setDataSource(filePath);
+            int bitrate = Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_BITRATE));
+            retriever.release();
+            MediaExtractor extractor = new MediaExtractor();
+            extractor.setDataSource(filePath);
+            MediaFormat format = extractor.getTrackFormat(VideoUtil.selectTrack(extractor, false));
+            int frameRate = format.containsKey(MediaFormat.KEY_FRAME_RATE) ? format.getInteger(MediaFormat.KEY_FRAME_RATE) : -1;
+            int width = format.getInteger(MediaFormat.KEY_WIDTH);
+            int height = format.getInteger(MediaFormat.KEY_HEIGHT);
+            int rotation = format.containsKey(MediaFormat.KEY_ROTATION) ? format.getInteger(MediaFormat.KEY_ROTATION) : -1;
+            videoInfo = String.format("size:%dX%d,framerate:%d,rotation:%d,bitrate:%d", width, height, frameRate, rotation, bitrate);
+            extractor.release();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        tvInstruction.setText("Video stored at path " + filePath + "\n" +videoInfo);
         videoView.setVideoURI(Uri.parse(filePath));
         videoView.start();
 
@@ -101,6 +122,7 @@ public class PreviewActivity extends AppCompatActivity {
 
         }
     };
+
     @Override
     public boolean onOptionsItemSelected(MenuItem item) {
         // handle arrow click here

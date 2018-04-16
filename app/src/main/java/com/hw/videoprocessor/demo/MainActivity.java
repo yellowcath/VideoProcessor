@@ -469,7 +469,7 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void run() {
                 try {
-                    VideoEffects.doKichiku(getApplicationContext(), selectVideoPath, filePath, 2, 2000);
+                    VideoEffects.doKichiku(getApplicationContext(), selectVideoPath, filePath,null, 2, 2000);
                     Intent intent = new Intent(MainActivity.this, PreviewActivity.class);
                     intent.putExtra(FILEPATH, filePath);
                     startActivity(intent);

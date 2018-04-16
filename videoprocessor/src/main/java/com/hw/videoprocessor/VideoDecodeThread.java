@@ -32,10 +32,11 @@ public class VideoDecodeThread extends Thread {
     private IVideoEncodeThread mVideoEncodeThread;
     private InputSurface mInputSurface;
     private OutputSurface mOutputSurface;
+    private Integer mFrameRate;
 
     public VideoDecodeThread(IVideoEncodeThread videoEncodeThread, MediaExtractor extractor,
                              @Nullable Integer startTimeMs, @Nullable Integer endTimeMs,
-                             @Nullable Float speed,
+                             @Nullable Integer frameRate, @Nullable Float speed,
                              int videoIndex, AtomicBoolean decodeDone
 
     ) {
@@ -47,6 +48,7 @@ public class VideoDecodeThread extends Thread {
         mVideoIndex = videoIndex;
         mDecodeDone = decodeDone;
         mVideoEncodeThread = videoEncodeThread;
+        mFrameRate = frameRate;
     }
 
     @Override
@@ -84,6 +86,19 @@ public class VideoDecodeThread extends Thread {
         mDecoder.configure(inputFormat, mOutputSurface.getSurface(), null, 0);
         mDecoder.start();
 
+        int frameIntervalForDrop = 0;
+        int dropCount = 0;
+        int frameIndex = 1;
+        if (mFrameRate != null && VideoProcessor.DROP_FRAMES) {
+            int sourceFrameRate = inputFormat.containsKey(MediaFormat.KEY_FRAME_RATE) ? inputFormat.getInteger(MediaFormat.KEY_FRAME_RATE) : 0;
+            if (sourceFrameRate != 0 && sourceFrameRate > mFrameRate) {
+                frameIntervalForDrop = mFrameRate / (sourceFrameRate - mFrameRate);
+                frameIntervalForDrop = frameIntervalForDrop == 0 ? 1 : frameIntervalForDrop;
+                dropCount = (sourceFrameRate - mFrameRate) / mFrameRate;
+                dropCount = dropCount == 0 ? 1 : dropCount;
+                CL.w("帧率过高，需要丢帧:" + sourceFrameRate + "->" + mFrameRate + " frameIntervalForDrop:" + frameIntervalForDrop + " dropCount:" + dropCount);
+            }
+        }
         //开始解码
         MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
         boolean decoderDone = false;
@@ -156,7 +171,15 @@ public class VideoDecodeThread extends Thread {
                         CL.i("decoderDone");
                         break;
                     }
-                    mDecoder.releaseOutputBuffer(outputBufferIndex, true);
+                    //检查是否需要丢帧
+                    long presentationTimeUs = info.presentationTimeUs - videoStartTimeUs;
+                    int remainder = frameIndex % (frameIntervalForDrop + dropCount);
+                    if (frameIntervalForDrop > 0 && (remainder > frameIntervalForDrop || remainder == 0)) {
+                        CL.w("帧率过高，丢帧:" + frameIndex + " timestampMs:" + presentationTimeUs / 1000);
+                        doRender = false;
+                    }
+                    frameIndex++;
+                    mDecoder.releaseOutputBuffer(outputBufferIndex, doRender);
                     if (doRender) {
                         boolean errorWait = false;
                         try {
@@ -171,7 +194,7 @@ public class VideoDecodeThread extends Thread {
                                 CL.i("videoStartTime:" + videoStartTimeUs / 1000);
                             }
                             mOutputSurface.drawImage(false);
-                            long presentationTimeNs = (info.presentationTimeUs - videoStartTimeUs) * 1000;
+                            long presentationTimeNs = presentationTimeUs * 1000;
                             if (mSpeed != null) {
                                 presentationTimeNs /= mSpeed;
                             }

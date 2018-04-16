@@ -34,7 +34,10 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class VideoProcessor {
     final static String TAG = "VideoProcessor";
     final static String MIME_TYPE = "video/avc";
-
+    /**
+     * 帧率超过制定帧率时是否丢帧
+     */
+    public static boolean DROP_FRAMES = true;
     public static int DEFAULT_FRAME_RATE = 20;
     /**
      * 只有关键帧距为0的才能方便做逆序
@@ -120,6 +123,7 @@ public class VideoProcessor {
 
     /**
      * 支持裁剪缩放快慢放
+     * @param frameRate 只有{@link #DROP_FRAMES}为true时才会进行丢帧，确保输出视频帧率接近frameRate
      */
     public static void processVideo(Context context, String input, String output,
                                     @Nullable Integer outWidth, @Nullable Integer outHeight,
@@ -183,7 +187,7 @@ public class VideoProcessor {
                 resultWidth, resultHeight, iFrameInterval, frameRate == null ? DEFAULT_FRAME_RATE : frameRate, videoIndex,
                 decodeDone, muxerStartLatch);
         VideoDecodeThread decodeThread = new VideoDecodeThread(encodeThread, extractor, startTimeMs, endTimeMs,
-                speed, videoIndex, decodeDone);
+                frameRate == null ? DEFAULT_FRAME_RATE : frameRate,speed, videoIndex, decodeDone);
         AudioProcessThread audioProcessThread = new AudioProcessThread(context, input, mediaMuxer, startTimeMs, endTimeMs,
                 speed, muxerAudioTrackIndex, muxerStartLatch);
         decodeThread.start();
@@ -512,7 +516,7 @@ public class VideoProcessor {
                                      Integer startTimeMs, Integer endTimeMs,
                                      @IntRange(from = 0, to = 100) int videoVolume,
                                      @IntRange(from = 0, to = 100) int aacVolume,
-                                     float fadeInSec,float fadeOutSec) throws IOException {
+                                     float fadeInSec, float fadeOutSec) throws IOException {
         File cacheDir = new File(context.getCacheDir(), "pcm");
         cacheDir.mkdir();
 
@@ -589,8 +593,8 @@ public class VideoProcessor {
                 channelConfig = AudioFormat.CHANNEL_IN_STEREO;
             }
             //淡入淡出
-            if(fadeInSec!=0 || fadeOutSec!=0){
-                AudioFadeUtil.audioFade(adjustedPcm.getAbsolutePath(),sampleRate,channelCount,fadeInSec,fadeOutSec);
+            if (fadeInSec != 0 || fadeOutSec != 0) {
+                AudioFadeUtil.audioFade(adjustedPcm.getAbsolutePath(), sampleRate, channelCount, fadeInSec, fadeOutSec);
             }
             //PCM转WAV
             new PcmToWavUtil(adjustedSampleRate, channelConfig, channelCount, AudioFormat.ENCODING_PCM_16BIT).pcmToWav(adjustedPcm.getAbsolutePath(), wavFile.getAbsolutePath());
@@ -625,8 +629,8 @@ public class VideoProcessor {
             }
             wavFile = new File(context.getCacheDir(), adjustedPcm.getName() + ".wav");
             //淡入淡出
-            if(fadeInSec!=0 || fadeOutSec!=0){
-                AudioFadeUtil.audioFade(adjustedPcm.getAbsolutePath(),sampleRate,channelCount,fadeInSec,fadeOutSec);
+            if (fadeInSec != 0 || fadeOutSec != 0) {
+                AudioFadeUtil.audioFade(adjustedPcm.getAbsolutePath(), sampleRate, channelCount, fadeInSec, fadeOutSec);
             }
             //PCM转WAV
             new PcmToWavUtil(sampleRate, channelConfig, channelCount, AudioFormat.ENCODING_PCM_16BIT).pcmToWav(adjustedPcm.getAbsolutePath(), wavFile.getAbsolutePath());
