@@ -396,8 +396,15 @@ public class MainActivity extends AppCompatActivity {
 
                     int outWidth = originWidth / 2;
                     int outHeight = originHeight / 2;
-                    VideoProcessor.processVideo(getApplicationContext(), selectVideoPath, filePath,
-                            outWidth, outHeight, startMs, endMs, null, bitrate / 2, null,null,null);
+                    VideoProcessor.processor(getApplicationContext())
+                            .input(selectVideoPath)
+                            .output(filePath)
+                            .outWidth(outWidth)
+                            .outHeight(outHeight)
+                            .startTimeMs(startMs)
+                            .endTimeMs(endMs)
+                            .bitrate(bitrate / 2)
+                            .process();
                     Intent intent = new Intent(MainActivity.this, PreviewActivity.class);
                     intent.putExtra(FILEPATH, filePath);
                     startActivity(intent);
@@ -433,7 +440,7 @@ public class MainActivity extends AppCompatActivity {
                     final String aacPath = new File(getCacheDir(), "test.aac").getAbsolutePath();
                     copyAssets("test.aac", aacPath);
                     VideoProcessor.mixAudioTrack(getApplicationContext(), selectVideoPath, aacPath, filePath, startMs, endMs, 50, 50,
-                            1,1);
+                            1, 1);
                     Intent intent = new Intent(MainActivity.this, PreviewActivity.class);
                     intent.putExtra(FILEPATH, filePath);
                     startActivity(intent);
@@ -469,7 +476,7 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void run() {
                 try {
-                    VideoEffects.doKichiku(getApplicationContext(), selectVideoPath, filePath,null, 2, 2000);
+                    VideoEffects.doKichiku(getApplicationContext(), selectVideoPath, filePath, null, 2, 2000);
                     Intent intent = new Intent(MainActivity.this, PreviewActivity.class);
                     intent.putExtra(FILEPATH, filePath);
                     startActivity(intent);
@@ -506,8 +513,13 @@ public class MainActivity extends AppCompatActivity {
             public void run() {
                 try {
                     long s = System.currentTimeMillis();
-                    VideoProcessor.processVideo(getApplicationContext(), selectVideoPath, filePath,
-                            null, null, startMs, endMs, speed, null,null, null,null);
+                    VideoProcessor.processor(getApplicationContext())
+                            .input(selectVideoPath)
+                            .output(filePath)
+                            .startTimeMs(startMs)
+                            .endTimeMs(endMs)
+                            .speed(speed)
+                            .process();
                     long e = System.currentTimeMillis();
                     CL.w("减速已完成，耗时:" + (e - s) / 1000f + "s");
                     Intent intent = new Intent(MainActivity.this, PreviewActivity.class);

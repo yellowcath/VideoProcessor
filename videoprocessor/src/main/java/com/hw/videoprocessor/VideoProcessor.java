@@ -53,17 +53,29 @@ public class VideoProcessor {
 
     public static void scaleVideo(Context context, String input, String output,
                                   int outWidth, int outHeight) throws Exception {
-        processVideo(context, input, output, outWidth, outHeight, null, null, null, null, null, null, null);
+        processor(context)
+                .input(input)
+                .output(output)
+                .outWidth(outWidth)
+                .outHeight(outHeight)
+                .process();
     }
 
     public static void cutVideo(Context context, String input, String output, int startTimeMs, int endTimeMs) throws Exception {
-        processVideo(context, input, output, null, null, startTimeMs, endTimeMs, null, null, null, null, null);
-
+        processor(context)
+                .input(input)
+                .output(output)
+                .startTimeMs(startTimeMs)
+                .endTimeMs(endTimeMs)
+                .process();
     }
 
     public static void changeVideoSpeed(Context context, String input, String output, float speed) throws Exception {
-        processVideo(context, input, output, null, null, null, null, speed, null, null, null, null);
-
+        processor(context)
+                .input(input)
+                .output(output)
+                .speed(speed)
+                .process();
     }
 
 
@@ -94,7 +106,7 @@ public class VideoProcessor {
             }
             extractor.release();
             if (frameCount == keyFrameCount) {
-                revertVideoNoDecode(input, output);
+                reverseVideoNoDecode(input, output);
             } else {
                 int bitrateMultiple = (frameCount - keyFrameCount) / keyFrameCount;
                 MediaMetadataRetriever retriever = new MediaMetadataRetriever();
@@ -102,16 +114,16 @@ public class VideoProcessor {
                 int oriBitrate = Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_BITRATE));
                 int duration = Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION));
                 try {
-                    processVideo(context, input, tempFile.getAbsolutePath(), null, null, null, null, null, oriBitrate * bitrateMultiple, null, 0,null);
+                    processVideo(context, input, tempFile.getAbsolutePath(), null, null, null, null, null, oriBitrate * bitrateMultiple, null, 0, null);
                 } catch (MediaCodec.CodecException e) {
                     CL.e(e);
                     /** Nexus5上-1代表全关键帧*/
-                    processVideo(context, input, tempFile.getAbsolutePath(), null, null, null, null, null, oriBitrate * bitrateMultiple, null, -1,null);
+                    processVideo(context, input, tempFile.getAbsolutePath(), null, null, null, null, null, oriBitrate * bitrateMultiple, null, -1, null);
                 }
-                revertVideoNoDecode(tempFile.getAbsolutePath(), temp2File.getAbsolutePath());
+                reverseVideoNoDecode(tempFile.getAbsolutePath(), temp2File.getAbsolutePath());
                 int oriIFrameInterval = (int) (keyFrameCount / (duration / 1000f));
                 oriIFrameInterval = oriIFrameInterval == 0 ? 1 : oriIFrameInterval;
-                processVideo(context, temp2File.getAbsolutePath(), output, null, null, null, null, null, oriBitrate, null, oriIFrameInterval,null);
+                processVideo(context, temp2File.getAbsolutePath(), output, null, null, null, null, null, oriBitrate, null, oriIFrameInterval, null);
             }
         } finally {
             tempFile.delete();
@@ -184,8 +196,8 @@ public class VideoProcessor {
 
         VideoProgressAve progressAve = new VideoProgressAve(listener);
         progressAve.setSpeed(speed);
-        progressAve.setStartTimeMs(startTimeMs==null?0:startTimeMs);
-        progressAve.setEndTimeMs(endTimeMs==null?duration:endTimeMs);
+        progressAve.setStartTimeMs(startTimeMs == null ? 0 : startTimeMs);
+        progressAve.setEndTimeMs(endTimeMs == null ? duration : endTimeMs);
         AtomicBoolean decodeDone = new AtomicBoolean(false);
         CountDownLatch muxerStartLatch = new CountDownLatch(1);
         VideoEncodeThread encodeThread = new VideoEncodeThread(extractor, mediaMuxer, bitrate,
@@ -230,7 +242,7 @@ public class VideoProcessor {
     /**
      * 直接对视频进行逆序,用于所有帧都是关键帧的情况
      */
-    public static void revertVideoNoDecode(String input, String output) throws IOException {
+    public static void reverseVideoNoDecode(String input, String output) throws IOException {
         MediaMetadataRetriever retriever = new MediaMetadataRetriever();
         retriever.setDataSource(input);
         int durationMs = Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION));
@@ -584,7 +596,96 @@ public class VideoProcessor {
                 CL.e(e);
             }
         }
-
     }
 
+    public static Processor processor(Context context) {
+        return new Processor(context);
+    }
+
+    public static class Processor {
+        private Context context;
+        private String input;
+        private String output;
+        @Nullable
+        private Integer outWidth;
+        @Nullable
+        private Integer outHeight;
+        @Nullable
+        private Integer startTimeMs;
+        @Nullable
+        private Integer endTimeMs;
+        @Nullable
+        private Float speed;
+        @Nullable
+        private Integer bitrate;
+        @Nullable
+        private Integer frameRate;
+        @Nullable
+        private Integer iFrameInterval;
+        @Nullable
+        private VideoProgressListener listener;
+
+        public Processor(Context context) {
+            this.context = context;
+        }
+
+        public Processor input(String input) {
+            this.input = input;
+            return this;
+        }
+
+        public Processor output(String output) {
+            this.output = output;
+            return this;
+        }
+
+        public Processor outWidth(int outWidth) {
+            this.outWidth = outWidth;
+            return this;
+        }
+
+        public Processor outHeight(int outHeight) {
+            this.outHeight = outHeight;
+            return this;
+        }
+
+        public Processor startTimeMs(int startTimeMs) {
+            this.startTimeMs = startTimeMs;
+            return this;
+        }
+
+        public Processor endTimeMs(int endTimeMs) {
+            this.endTimeMs = endTimeMs;
+            return this;
+        }
+
+        public Processor speed(float speed) {
+            this.speed = speed;
+            return this;
+        }
+
+        public Processor bitrate(int bitrate) {
+            this.bitrate = bitrate;
+            return this;
+        }
+
+        public Processor frameRate(int frameRate) {
+            this.frameRate = frameRate;
+            return this;
+        }
+
+        public Processor iFrameInterval(int iFrameInterval) {
+            this.iFrameInterval = iFrameInterval;
+            return this;
+        }
+
+        public Processor progressListener(VideoProgressListener listener) {
+            this.listener = listener;
+            return this;
+        }
+
+        public void process() throws Exception {
+            processVideo(context, input, output, outWidth, outHeight, startTimeMs, endTimeMs, speed, bitrate, frameRate, iFrameInterval, listener);
+        }
+    }
 }
