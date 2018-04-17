@@ -1,17 +1,16 @@
 package com.hw.videoprocessor;
 
 import android.content.Context;
-import android.media.MediaCodec;
 import android.media.MediaExtractor;
 import android.media.MediaFormat;
 import android.media.MediaMetadataRetriever;
 import android.media.MediaMuxer;
 import android.util.Pair;
+import com.hw.videoprocessor.util.AudioUtil;
 import com.hw.videoprocessor.util.CL;
 
 import java.io.File;
 import java.io.IOException;
-import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.List;
@@ -56,7 +55,7 @@ public class VideoUtil {
         for (Pair<Integer, Integer> pair : sliceList) {
             File file = new File(outputDir, pair.first + ".mp4");
             VideoProcessor.processVideo(context, inputVideo, file.getAbsolutePath(), null, null, pair.first,
-                    pair.second, speed, bitrate, null, iFrameInterval);
+                    pair.second, speed, bitrate, null, iFrameInterval, null);
             fileList.add(file);
         }
         return fileList;
@@ -102,7 +101,7 @@ public class VideoUtil {
                 audioIndex = selectTrack(extractor, true);
             }
             if (audioExist) {
-                audioFrameTimeUs = writeAudioTrack(extractor, mediaMuxer, audioMuxerIndex, null, null, baseFrameTimeUs);
+                audioFrameTimeUs = AudioUtil.writeAudioTrack(extractor, mediaMuxer, audioMuxerIndex, null, null, baseFrameTimeUs, null);
                 extractor.unselectTrack(audioIndex);
             }
             videoFrameTimeUs = appendVideoTrack(extractor, mediaMuxer, videoMuxerIndex,
@@ -124,7 +123,7 @@ public class VideoUtil {
             extractor.setDataSource(out);
             if (audioExist) {
                 audioIndex = selectTrack(extractor, true);
-                audioFrameTimeUs = writeAudioTrack(extractor, mediaMuxer, audioMuxerIndex, null, null, baseFrameTimeUs);
+                audioFrameTimeUs = AudioUtil.writeAudioTrack(extractor, mediaMuxer, audioMuxerIndex, null, null, baseFrameTimeUs, null);
                 extractor.unselectTrack(audioIndex);
             }
             videoFrameTimeUs = appendVideoTrack(extractor, mediaMuxer, videoMuxerIndex, null, null,
@@ -157,54 +156,6 @@ public class VideoUtil {
         return -5;
     }
 
-    static long writeAudioTrack(MediaExtractor extractor, MediaMuxer mediaMuxer, int muxerAudioTrackIndex,
-                                Integer startTimeUs, Integer endTimeUs) throws IOException {
-        return writeAudioTrack(extractor, mediaMuxer, muxerAudioTrackIndex, startTimeUs, endTimeUs, 0);
-    }
-
-    /**
-     * 不需要改变音频速率的情况下，直接读写就可
-     */
-    static long writeAudioTrack(MediaExtractor extractor, MediaMuxer mediaMuxer, int muxerAudioTrackIndex,
-                                Integer startTimeUs, Integer endTimeUs, long baseMuxerFrameTimeUs) throws IOException {
-        int audioTrack = selectTrack(extractor, true);
-        extractor.selectTrack(audioTrack);
-        if (startTimeUs == null) {
-            startTimeUs = 0;
-        }
-        extractor.seekTo(startTimeUs, MediaExtractor.SEEK_TO_CLOSEST_SYNC);
-        MediaFormat audioFormat = extractor.getTrackFormat(audioTrack);
-        int maxBufferSize = audioFormat.getInteger(MediaFormat.KEY_MAX_INPUT_SIZE);
-        ByteBuffer buffer = ByteBuffer.allocateDirect(maxBufferSize);
-        MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
-
-        long lastFrametimeUs = baseMuxerFrameTimeUs;
-        while (true) {
-            long sampleTimeUs = extractor.getSampleTime();
-            if (sampleTimeUs == -1) {
-                break;
-            }
-            if (sampleTimeUs < startTimeUs) {
-                extractor.advance();
-                continue;
-            }
-            if (endTimeUs != null && sampleTimeUs > endTimeUs) {
-                break;
-            }
-            info.presentationTimeUs = sampleTimeUs - startTimeUs + baseMuxerFrameTimeUs;
-            info.flags = extractor.getSampleFlags();
-            info.size = extractor.readSampleData(buffer, 0);
-            if (info.size < 0) {
-                break;
-            }
-            CL.i("writeAudioSampleData,time:" + info.presentationTimeUs / 1000f);
-            mediaMuxer.writeSampleData(muxerAudioTrackIndex, buffer, info);
-            lastFrametimeUs = info.presentationTimeUs;
-            extractor.advance();
-        }
-        return lastFrametimeUs;
-    }
-
     static long appendVideoTrack(MediaExtractor extractor, MediaMuxer mediaMuxer, int muxerVideoTrackIndex,
                                  Integer startTimeUs, Integer endTimeUs, long baseMuxerFrameTimeUs, int bitrate, int iFrameInterval,
                                  boolean isFirst, boolean isLast) throws Exception {
@@ -226,7 +177,7 @@ public class VideoUtil {
                 decodeDone, baseMuxerFrameTimeUs, isFirst, isLast, muxerVideoTrackIndex);
         VideoDecodeThread decodeThread = new VideoDecodeThread(encodeThread, extractor, startTimeUs == null ? null : startTimeUs / 1000,
                 endTimeUs == null ? null : endTimeUs / 1000,
-                null,null, videoTrack, decodeDone);
+                null, null, videoTrack, decodeDone);
         decodeThread.start();
         encodeThread.start();
         try {
@@ -247,22 +198,6 @@ public class VideoUtil {
             throw decodeThread.getException();
         }
         return encodeThread.getLastFrametimeUs();
-    }
-
-    static int getAudioMaxBufferSize(MediaFormat format) {
-        if (format.containsKey(MediaFormat.KEY_MAX_INPUT_SIZE)) {
-            return format.getInteger(MediaFormat.KEY_MAX_INPUT_SIZE);
-        } else {
-            return 100 * 1000;
-        }
-    }
-
-    static int getAudioBitrate(MediaFormat format) {
-        if (format.containsKey(MediaFormat.KEY_BIT_RATE)) {
-            return format.getInteger(MediaFormat.KEY_BIT_RATE);
-        } else {
-            return VideoProcessor.DEFAULT_AAC_BITRATE;
-        }
     }
 
     /**

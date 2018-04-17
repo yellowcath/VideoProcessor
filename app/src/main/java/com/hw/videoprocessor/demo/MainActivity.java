@@ -397,7 +397,7 @@ public class MainActivity extends AppCompatActivity {
                     int outWidth = originWidth / 2;
                     int outHeight = originHeight / 2;
                     VideoProcessor.processVideo(getApplicationContext(), selectVideoPath, filePath,
-                            outWidth, outHeight, startMs, endMs, null, bitrate / 2, null,null);
+                            outWidth, outHeight, startMs, endMs, null, bitrate / 2, null,null,null);
                     Intent intent = new Intent(MainActivity.this, PreviewActivity.class);
                     intent.putExtra(FILEPATH, filePath);
                     startActivity(intent);
@@ -507,7 +507,7 @@ public class MainActivity extends AppCompatActivity {
                 try {
                     long s = System.currentTimeMillis();
                     VideoProcessor.processVideo(getApplicationContext(), selectVideoPath, filePath,
-                            null, null, startMs, endMs, speed, null,null, null);
+                            null, null, startMs, endMs, speed, null,null, null,null);
                     long e = System.currentTimeMillis();
                     CL.w("减速已完成，耗时:" + (e - s) / 1000f + "s");
                     Intent intent = new Intent(MainActivity.this, PreviewActivity.class);

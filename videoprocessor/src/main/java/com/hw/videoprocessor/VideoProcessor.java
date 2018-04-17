@@ -10,20 +10,18 @@ import android.media.MediaFormat;
 import android.media.MediaMetadataRetriever;
 import android.media.MediaMuxer;
 import android.support.annotation.IntRange;
-import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
 import android.util.Pair;
 import com.hw.videoprocessor.util.AudioFadeUtil;
 import com.hw.videoprocessor.util.AudioUtil;
 import com.hw.videoprocessor.util.CL;
 import com.hw.videoprocessor.util.PcmToWavUtil;
-import net.surina.soundtouch.SoundTouch;
+import com.hw.videoprocessor.util.VideoProgressAve;
+import com.hw.videoprocessor.util.VideoProgressListener;
 
 import java.io.File;
-import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.nio.channels.FileChannel;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -55,16 +53,16 @@ public class VideoProcessor {
 
     public static void scaleVideo(Context context, String input, String output,
                                   int outWidth, int outHeight) throws Exception {
-        processVideo(context, input, output, outWidth, outHeight, null, null, null, null, null, null);
+        processVideo(context, input, output, outWidth, outHeight, null, null, null, null, null, null, null);
     }
 
     public static void cutVideo(Context context, String input, String output, int startTimeMs, int endTimeMs) throws Exception {
-        processVideo(context, input, output, null, null, startTimeMs, endTimeMs, null, null, null, null);
+        processVideo(context, input, output, null, null, startTimeMs, endTimeMs, null, null, null, null, null);
 
     }
 
     public static void changeVideoSpeed(Context context, String input, String output, float speed) throws Exception {
-        processVideo(context, input, output, null, null, null, null, speed, null, null, null);
+        processVideo(context, input, output, null, null, null, null, speed, null, null, null, null);
 
     }
 
@@ -104,16 +102,16 @@ public class VideoProcessor {
                 int oriBitrate = Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_BITRATE));
                 int duration = Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION));
                 try {
-                    processVideo(context, input, tempFile.getAbsolutePath(), null, null, null, null, null, oriBitrate * bitrateMultiple, null, 0);
+                    processVideo(context, input, tempFile.getAbsolutePath(), null, null, null, null, null, oriBitrate * bitrateMultiple, null, 0,null);
                 } catch (MediaCodec.CodecException e) {
                     CL.e(e);
                     /** Nexus5上-1代表全关键帧*/
-                    processVideo(context, input, tempFile.getAbsolutePath(), null, null, null, null, null, oriBitrate * bitrateMultiple, null, -1);
+                    processVideo(context, input, tempFile.getAbsolutePath(), null, null, null, null, null, oriBitrate * bitrateMultiple, null, -1,null);
                 }
                 revertVideoNoDecode(tempFile.getAbsolutePath(), temp2File.getAbsolutePath());
                 int oriIFrameInterval = (int) (keyFrameCount / (duration / 1000f));
                 oriIFrameInterval = oriIFrameInterval == 0 ? 1 : oriIFrameInterval;
-                processVideo(context, temp2File.getAbsolutePath(), output, null, null, null, null, null, oriBitrate, null, oriIFrameInterval);
+                processVideo(context, temp2File.getAbsolutePath(), output, null, null, null, null, null, oriBitrate, null, oriIFrameInterval,null);
             }
         } finally {
             tempFile.delete();
@@ -123,13 +121,15 @@ public class VideoProcessor {
 
     /**
      * 支持裁剪缩放快慢放
+     *
      * @param frameRate 只有{@link #DROP_FRAMES}为true时才会进行丢帧，确保输出视频帧率接近frameRate
      */
     public static void processVideo(Context context, String input, String output,
                                     @Nullable Integer outWidth, @Nullable Integer outHeight,
                                     @Nullable Integer startTimeMs, @Nullable Integer endTimeMs,
                                     @Nullable Float speed, @Nullable Integer bitrate,
-                                    @Nullable Integer frameRate, @Nullable Integer iFrameInterval) throws Exception {
+                                    @Nullable Integer frameRate, @Nullable Integer iFrameInterval,
+                                    @Nullable VideoProgressListener listener) throws Exception {
 
         MediaMetadataRetriever retriever = new MediaMetadataRetriever();
         retriever.setDataSource(input);
@@ -137,6 +137,7 @@ public class VideoProcessor {
         int originHeight = Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT));
         int rotationValue = Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION));
         int oriBitrate = Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_BITRATE));
+        int duration = Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION));
         retriever.release();
         if (bitrate == null) {
             bitrate = oriBitrate;
@@ -181,15 +182,21 @@ public class VideoProcessor {
             extractor.seekTo(0, MediaExtractor.SEEK_TO_PREVIOUS_SYNC);
         }
 
+        VideoProgressAve progressAve = new VideoProgressAve(listener);
+        progressAve.setSpeed(speed);
+        progressAve.setStartTimeMs(startTimeMs==null?0:startTimeMs);
+        progressAve.setEndTimeMs(endTimeMs==null?duration:endTimeMs);
         AtomicBoolean decodeDone = new AtomicBoolean(false);
         CountDownLatch muxerStartLatch = new CountDownLatch(1);
         VideoEncodeThread encodeThread = new VideoEncodeThread(extractor, mediaMuxer, bitrate,
                 resultWidth, resultHeight, iFrameInterval, frameRate == null ? DEFAULT_FRAME_RATE : frameRate, videoIndex,
                 decodeDone, muxerStartLatch);
         VideoDecodeThread decodeThread = new VideoDecodeThread(encodeThread, extractor, startTimeMs, endTimeMs,
-                frameRate == null ? DEFAULT_FRAME_RATE : frameRate,speed, videoIndex, decodeDone);
+                frameRate == null ? DEFAULT_FRAME_RATE : frameRate, speed, videoIndex, decodeDone);
         AudioProcessThread audioProcessThread = new AudioProcessThread(context, input, mediaMuxer, startTimeMs, endTimeMs,
                 speed, muxerAudioTrackIndex, muxerStartLatch);
+        encodeThread.setProgressAve(progressAve);
+        audioProcessThread.setProgressAve(progressAve);
         decodeThread.start();
         encodeThread.start();
         audioProcessThread.start();
@@ -217,207 +224,6 @@ public class VideoProcessor {
             throw decodeThread.getException();
         } else if (audioProcessThread.getException() != null) {
             throw audioProcessThread.getException();
-        }
-    }
-
-    /**
-     * 需要改变音频速率的情况下，需要先解码->改变速率->编码
-     */
-    static void writeAudioTrack(Context context, MediaExtractor extractor, MediaMuxer mediaMuxer, int muxerAudioTrackIndex,
-                                Integer startTimeUs, Integer endTimeUs,
-                                @NonNull Float speed) throws Exception {
-        int audioTrack = VideoUtil.selectTrack(extractor, true);
-        extractor.selectTrack(audioTrack);
-        if (startTimeUs == null) {
-            startTimeUs = 0;
-        }
-        extractor.seekTo(startTimeUs, MediaExtractor.SEEK_TO_CLOSEST_SYNC);
-        MediaFormat oriAudioFormat = extractor.getTrackFormat(audioTrack);
-        int maxBufferSize = VideoUtil.getAudioMaxBufferSize(oriAudioFormat);
-
-        ByteBuffer buffer = ByteBuffer.allocateDirect(maxBufferSize);
-        MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
-
-        //调整音频速率需要重解码音频帧
-        MediaCodec decoder = MediaCodec.createDecoderByType(oriAudioFormat.getString(MediaFormat.KEY_MIME));
-        decoder.configure(oriAudioFormat, null, null, 0);
-        decoder.start();
-
-
-        boolean decodeDone = false;
-        boolean encodeDone = false;
-        boolean decodeInputDone = false;
-        final int TIMEOUT_US = 2500;
-        File pcmFile = new File(context.getCacheDir(), System.currentTimeMillis() + ".pcm");
-        FileChannel writeChannel = new FileOutputStream(pcmFile).getChannel();
-        try {
-            while (!decodeDone) {
-                if (!decodeInputDone) {
-                    boolean eof = false;
-                    int decodeInputIndex = decoder.dequeueInputBuffer(TIMEOUT_US);
-                    if (decodeInputIndex >= 0) {
-                        long sampleTimeUs = extractor.getSampleTime();
-                        if (sampleTimeUs == -1) {
-                            eof = true;
-                        } else if (sampleTimeUs < startTimeUs) {
-                            extractor.advance();
-                            continue;
-                        } else if (endTimeUs != null && sampleTimeUs > endTimeUs) {
-                            eof = true;
-                        }
-
-                        if (eof) {
-                            decodeInputDone = true;
-                            decoder.queueInputBuffer(decodeInputIndex, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM);
-                        } else {
-                            info.size = extractor.readSampleData(buffer, 0);
-                            info.presentationTimeUs = sampleTimeUs;
-                            info.flags = extractor.getSampleFlags();
-                            ByteBuffer inputBuffer = decoder.getInputBuffer(decodeInputIndex);
-                            inputBuffer.put(buffer);
-                            CL.it(TAG, "audio decode queueInputBuffer " + info.presentationTimeUs / 1000);
-                            decoder.queueInputBuffer(decodeInputIndex, 0, info.size, info.presentationTimeUs, info.flags);
-                            extractor.advance();
-                        }
-
-                    }
-                }
-
-                while (!decodeDone) {
-                    int outputBufferIndex = decoder.dequeueOutputBuffer(info, TIMEOUT_US);
-                    if (outputBufferIndex == MediaCodec.INFO_TRY_AGAIN_LATER) {
-                        break;
-                    } else if (outputBufferIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
-                        MediaFormat newFormat = decoder.getOutputFormat();
-                        CL.it(TAG, "audio decode newFormat = " + newFormat);
-                    } else if (outputBufferIndex < 0) {
-                        //ignore
-                        CL.et(TAG, "unexpected result from audio decoder.dequeueOutputBuffer: " + outputBufferIndex);
-                    } else {
-                        if (info.flags == MediaCodec.BUFFER_FLAG_END_OF_STREAM) {
-                            decodeDone = true;
-                        } else {
-                            ByteBuffer decodeOutputBuffer = decoder.getOutputBuffer(outputBufferIndex);
-                            CL.it(TAG, "audio decode saveFrame " + info.presentationTimeUs / 1000);
-                            writeChannel.write(decodeOutputBuffer);
-                        }
-                        decoder.releaseOutputBuffer(outputBufferIndex, false);
-                    }
-                }
-            }
-        } finally {
-            writeChannel.close();
-            extractor.release();
-            decoder.release();
-        }
-
-        int sampleRate = oriAudioFormat.getInteger(MediaFormat.KEY_SAMPLE_RATE);
-        int oriChannelCount = oriAudioFormat.getInteger(MediaFormat.KEY_CHANNEL_COUNT);
-        File wavFile = new File(context.getCacheDir(), pcmFile.getName() + ".wav");
-
-        int channelConfig = AudioFormat.CHANNEL_IN_MONO;
-        if (oriChannelCount == 2) {
-            channelConfig = AudioFormat.CHANNEL_IN_STEREO;
-        }
-        new PcmToWavUtil(sampleRate, channelConfig, oriChannelCount, AudioFormat.ENCODING_PCM_16BIT).pcmToWav(pcmFile.getAbsolutePath(), wavFile.getAbsolutePath());
-        //开始处理pcm
-        CL.i(TAG, "start process pcm speed");
-        File outFile = new File(context.getCacheDir(), pcmFile.getName() + ".outpcm");
-        SoundTouch st = new SoundTouch();
-        st.setTempo(speed);
-
-        int res = st.processFile(wavFile.getAbsolutePath(), outFile.getAbsolutePath());
-        if (res < 0) {
-            pcmFile.delete();
-            wavFile.delete();
-            outFile.delete();
-            return;
-        }
-        //重新将速率变化过后的pcm写入
-        MediaExtractor pcmExtrator = new MediaExtractor();
-        pcmExtrator.setDataSource(outFile.getAbsolutePath());
-        audioTrack = VideoUtil.selectTrack(pcmExtrator, true);
-        pcmExtrator.selectTrack(audioTrack);
-        MediaFormat pcmTrackFormat = pcmExtrator.getTrackFormat(audioTrack);
-        maxBufferSize = VideoUtil.getAudioMaxBufferSize(pcmTrackFormat);
-        buffer = ByteBuffer.allocateDirect(maxBufferSize);
-
-        int bitrate = VideoUtil.getAudioBitrate(oriAudioFormat);
-        int channelCount = oriAudioFormat.getInteger(MediaFormat.KEY_CHANNEL_COUNT);
-        MediaFormat encodeFormat = MediaFormat.createAudioFormat(MediaFormat.MIMETYPE_AUDIO_AAC, sampleRate, channelCount);//参数对应-> mime type、采样率、声道数
-        encodeFormat.setInteger(MediaFormat.KEY_BIT_RATE, bitrate);//比特率
-        encodeFormat.setInteger(MediaFormat.KEY_AAC_PROFILE, MediaCodecInfo.CodecProfileLevel.AACObjectLC);
-        encodeFormat.setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, maxBufferSize);
-        MediaCodec encoder = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_AUDIO_AAC);
-        encoder.configure(encodeFormat, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE);
-        encoder.start();
-        boolean encodeInputDone = false;
-        long lastAudioFrameTimeUs = -1;
-        final int AAC_FRAME_TIME_US = 1024 * 1000 * 1000 / sampleRate;
-        boolean detectTimeError = false;
-        try {
-            while (!encodeDone) {
-                int inputBufferIndex = encoder.dequeueInputBuffer(TIMEOUT_US);
-                if (!encodeInputDone && inputBufferIndex >= 0) {
-                    long sampleTime = pcmExtrator.getSampleTime();
-                    if (sampleTime < 0) {
-                        encodeInputDone = true;
-                        encoder.queueInputBuffer(inputBufferIndex, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM);
-                    } else {
-                        int flags = pcmExtrator.getSampleFlags();
-                        buffer.clear();
-                        int size = pcmExtrator.readSampleData(buffer, 0);
-                        ByteBuffer inputBuffer = encoder.getInputBuffer(inputBufferIndex);
-                        inputBuffer.clear();
-                        inputBuffer.put(buffer);
-                        inputBuffer.position(0);
-                        CL.it(TAG, "audio queuePcmBuffer " + sampleTime / 1000 + " size:" + size);
-                        encoder.queueInputBuffer(inputBufferIndex, 0, size, sampleTime, flags);
-                        pcmExtrator.advance();
-                    }
-                }
-
-                while (true) {
-                    int outputBufferIndex = encoder.dequeueOutputBuffer(info, TIMEOUT_US);
-                    if (outputBufferIndex == MediaCodec.INFO_TRY_AGAIN_LATER) {
-                        break;
-                    } else if (outputBufferIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
-                        MediaFormat newFormat = encoder.getOutputFormat();
-                        CL.it(TAG, "audio decode newFormat = " + newFormat);
-                    } else if (outputBufferIndex < 0) {
-                        //ignore
-                        CL.et(TAG, "unexpected result from audio decoder.dequeueOutputBuffer: " + outputBufferIndex);
-                    } else {
-                        if (info.flags == MediaCodec.BUFFER_FLAG_END_OF_STREAM) {
-                            encodeDone = true;
-                            break;
-                        }
-                        ByteBuffer encodeOutputBuffer = encoder.getOutputBuffer(outputBufferIndex);
-                        CL.it(TAG, "audio writeSampleData " + info.presentationTimeUs + " size:" + info.size + " flags:" + info.flags);
-                        if (!detectTimeError && lastAudioFrameTimeUs != -1 && info.presentationTimeUs < lastAudioFrameTimeUs + AAC_FRAME_TIME_US) {
-                            //某些情况下帧时间会出错，目前未找到原因（系统相机录得双声道视频正常，我录的单声道视频不正常）
-                            CL.et(TAG, "audio 时间戳错误，lastAudioFrameTimeUs:" + lastAudioFrameTimeUs + " " +
-                                    "info.presentationTimeUs:" + info.presentationTimeUs);
-                            detectTimeError = true;
-                        }
-                        if (detectTimeError) {
-                            info.presentationTimeUs = lastAudioFrameTimeUs + AAC_FRAME_TIME_US;
-                            CL.et(TAG, "audio 时间戳错误，使用修正的时间戳:" + info.presentationTimeUs);
-                        }
-                        lastAudioFrameTimeUs = info.presentationTimeUs;
-                        mediaMuxer.writeSampleData(muxerAudioTrackIndex, encodeOutputBuffer, info);
-
-                        encodeOutputBuffer.clear();
-                        encoder.releaseOutputBuffer(outputBufferIndex, false);
-                    }
-                }
-            }
-        } finally {
-            pcmFile.delete();
-            wavFile.delete();
-            outFile.delete();
-            pcmExtrator.release();
-            encoder.release();
         }
     }
 
@@ -564,7 +370,7 @@ public class VideoProcessor {
 
             MediaFormat oriAudioFormat = oriExtrator.getTrackFormat(oriAudioIndex);
             sampleRate = oriAudioFormat.getInteger(MediaFormat.KEY_SAMPLE_RATE);
-            audioBitrate = VideoUtil.getAudioBitrate(oriAudioFormat);
+            audioBitrate = AudioUtil.getAudioBitrate(oriAudioFormat);
             muxerAudioIndex = mediaMuxer.addTrack(oriAudioFormat);
 
             //检查两段音频格式是否一致,不一致则统一转换为单声道+44100
@@ -603,7 +409,7 @@ public class VideoProcessor {
             AudioUtil.decodeToPCM(aacInput, aacPcmFile.getAbsolutePath(), 0,
                     aacDurationMs > videoDurationMs ? videoDurationMs * 1000 : aacDurationMs * 1000);
             MediaFormat aacTrackFormat = aacExtractor.getTrackFormat(aacAudioIndex);
-            audioBitrate = VideoUtil.getAudioBitrate(aacTrackFormat);
+            audioBitrate = AudioUtil.getAudioBitrate(aacTrackFormat);
             muxerAudioIndex = mediaMuxer.addTrack(aacTrackFormat);
 
             sampleRate = aacTrackFormat.getInteger(MediaFormat.KEY_SAMPLE_RATE);
@@ -644,7 +450,7 @@ public class VideoProcessor {
         int audioTrack = VideoUtil.selectTrack(pcmExtrator, true);
         pcmExtrator.selectTrack(audioTrack);
         MediaFormat pcmTrackFormat = pcmExtrator.getTrackFormat(audioTrack);
-        int maxBufferSize = VideoUtil.getAudioMaxBufferSize(pcmTrackFormat);
+        int maxBufferSize = AudioUtil.getAudioMaxBufferSize(pcmTrackFormat);
         ByteBuffer buffer = ByteBuffer.allocateDirect(maxBufferSize);
         MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
         MediaFormat encodeFormat = MediaFormat.createAudioFormat(MediaFormat.MIMETYPE_AUDIO_AAC, sampleRate, channelCount);//参数对应-> mime type、采样率、声道数

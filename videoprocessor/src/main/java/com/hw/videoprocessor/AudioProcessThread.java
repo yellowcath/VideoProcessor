@@ -4,7 +4,10 @@ import android.content.Context;
 import android.media.MediaExtractor;
 import android.media.MediaMuxer;
 import android.support.annotation.Nullable;
+import com.hw.videoprocessor.util.AudioUtil;
 import com.hw.videoprocessor.util.CL;
+import com.hw.videoprocessor.util.VideoProgressAve;
+import com.hw.videoprocessor.util.VideoProgressListener;
 
 import java.util.concurrent.CountDownLatch;
 
@@ -12,7 +15,7 @@ import java.util.concurrent.CountDownLatch;
  * Created by huangwei on 2018/4/8 0008.
  */
 
-public class AudioProcessThread extends Thread {
+public class AudioProcessThread extends Thread implements VideoProgressListener {
 
     private String mVidepPath;
     private Integer mStartTimeMs;
@@ -24,6 +27,7 @@ public class AudioProcessThread extends Thread {
     private int mMuxerAudioTrackIndex;
     private MediaExtractor mExtractor;
     private CountDownLatch mMuxerStartLatch;
+    private VideoProgressAve mProgressAve;
 
     public AudioProcessThread(Context context, String videoPath, MediaMuxer muxer,
                               @Nullable Integer startTimeMs, @Nullable Integer endTimeMs,
@@ -67,14 +71,28 @@ public class AudioProcessThread extends Thread {
             Integer endTimeUs = mEndTimeMs == null ? null : mEndTimeMs * 1000;
             mMuxerStartLatch.await();
             if (mSpeed != null) {
-                VideoProcessor.writeAudioTrack(mContext, mExtractor, mMuxer, mMuxerAudioTrackIndex, startTimeUs, endTimeUs, mSpeed);
+                AudioUtil.writeAudioTrackDecode(mContext, mExtractor, mMuxer, mMuxerAudioTrackIndex, startTimeUs, endTimeUs, mSpeed, this);
             } else {
-                VideoUtil.writeAudioTrack(mExtractor, mMuxer, mMuxerAudioTrackIndex, startTimeUs, endTimeUs);
+                AudioUtil.writeAudioTrack(mExtractor, mMuxer, mMuxerAudioTrackIndex, startTimeUs, endTimeUs, this);
             }
+        }
+        if (mProgressAve != null) {
+            mProgressAve.setAudioProgress(1);
         }
     }
 
     public Exception getException() {
         return mException;
+    }
+
+    public void setProgressAve(VideoProgressAve progressAve) {
+        mProgressAve = progressAve;
+    }
+
+    @Override
+    public void onProgress(float progress) {
+        if (mProgressAve != null) {
+            mProgressAve.setAudioProgress(progress);
+        }
     }
 }

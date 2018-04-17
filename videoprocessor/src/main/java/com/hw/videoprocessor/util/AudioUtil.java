@@ -1,12 +1,20 @@
 package com.hw.videoprocessor.util;
 
+import android.content.Context;
+import android.media.AudioFormat;
 import android.media.MediaCodec;
+import android.media.MediaCodecInfo;
 import android.media.MediaExtractor;
 import android.media.MediaFormat;
+import android.media.MediaMuxer;
 import android.support.annotation.IntRange;
+import android.support.annotation.NonNull;
+import android.support.annotation.Nullable;
 import android.util.Pair;
+import com.hw.videoprocessor.VideoProcessor;
 import com.hw.videoprocessor.VideoUtil;
 import com.hw.videoprocessor.jssrc.SSRC;
+import net.surina.soundtouch.SoundTouch;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -413,7 +421,7 @@ public class AudioUtil {
                 srcFile.seek(offset);
                 srcFile.read(temp);
                 fos.write(temp);
-                offset-=step;
+                offset -= step;
             }
         } finally {
             if (srcFile != null) {
@@ -422,6 +430,293 @@ public class AudioUtil {
             if (fos != null) {
                 fos.close();
             }
+        }
+    }
+
+    public static long writeAudioTrack(MediaExtractor extractor, MediaMuxer mediaMuxer, int muxerAudioTrackIndex,
+                                       Integer startTimeUs, Integer endTimeUs, VideoProgressListener listener) throws IOException {
+        return writeAudioTrack(extractor, mediaMuxer, muxerAudioTrackIndex, startTimeUs, endTimeUs, 0, listener);
+    }
+
+    /**
+     * 不需要改变音频速率的情况下，直接读写就可
+     */
+    public static long writeAudioTrack(MediaExtractor extractor, MediaMuxer mediaMuxer, int muxerAudioTrackIndex,
+                                       Integer startTimeUs, Integer endTimeUs, long baseMuxerFrameTimeUs, VideoProgressListener listener) throws IOException {
+        int audioTrack = VideoUtil.selectTrack(extractor, true);
+        extractor.selectTrack(audioTrack);
+        if (startTimeUs == null) {
+            startTimeUs = 0;
+        }
+        extractor.seekTo(startTimeUs, MediaExtractor.SEEK_TO_CLOSEST_SYNC);
+        MediaFormat audioFormat = extractor.getTrackFormat(audioTrack);
+        long durationUs = audioFormat.getLong(MediaFormat.KEY_DURATION);
+        int maxBufferSize = audioFormat.getInteger(MediaFormat.KEY_MAX_INPUT_SIZE);
+        ByteBuffer buffer = ByteBuffer.allocateDirect(maxBufferSize);
+        MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
+
+        long lastFrametimeUs = baseMuxerFrameTimeUs;
+        while (true) {
+            long sampleTimeUs = extractor.getSampleTime();
+            if (sampleTimeUs == -1) {
+                break;
+            }
+            if (sampleTimeUs < startTimeUs) {
+                extractor.advance();
+                continue;
+            }
+            if (endTimeUs != null && sampleTimeUs > endTimeUs) {
+                break;
+            }
+            if (listener != null) {
+                float progress = (sampleTimeUs - startTimeUs) / (float) (endTimeUs == null ? durationUs : endTimeUs - startTimeUs);
+                progress = progress < 0 ? 0 : progress;
+                progress = progress > 1 ? 1 : progress;
+                listener.onProgress(progress);
+            }
+            info.presentationTimeUs = sampleTimeUs - startTimeUs + baseMuxerFrameTimeUs;
+            info.flags = extractor.getSampleFlags();
+            info.size = extractor.readSampleData(buffer, 0);
+            if (info.size < 0) {
+                break;
+            }
+            CL.i("writeAudioSampleData,time:" + info.presentationTimeUs / 1000f);
+            mediaMuxer.writeSampleData(muxerAudioTrackIndex, buffer, info);
+            lastFrametimeUs = info.presentationTimeUs;
+            extractor.advance();
+        }
+        return lastFrametimeUs;
+    }
+
+    /**
+     * 需要改变音频速率的情况下，需要先解码->改变速率->编码
+     */
+    public static void writeAudioTrackDecode(Context context, MediaExtractor extractor, MediaMuxer mediaMuxer, int muxerAudioTrackIndex,
+                                             Integer startTimeUs, Integer endTimeUs,
+                                             @NonNull Float speed, @Nullable VideoProgressListener listener) throws Exception {
+        int audioTrack = VideoUtil.selectTrack(extractor, true);
+        extractor.selectTrack(audioTrack);
+        if (startTimeUs == null) {
+            startTimeUs = 0;
+        }
+        extractor.seekTo(startTimeUs, MediaExtractor.SEEK_TO_CLOSEST_SYNC);
+        MediaFormat oriAudioFormat = extractor.getTrackFormat(audioTrack);
+        long durationUs = oriAudioFormat.getLong(MediaFormat.KEY_DURATION);
+        int maxBufferSize = getAudioMaxBufferSize(oriAudioFormat);
+
+        ByteBuffer buffer = ByteBuffer.allocateDirect(maxBufferSize);
+        MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
+
+        //调整音频速率需要重解码音频帧
+        MediaCodec decoder = MediaCodec.createDecoderByType(oriAudioFormat.getString(MediaFormat.KEY_MIME));
+        decoder.configure(oriAudioFormat, null, null, 0);
+        decoder.start();
+
+        boolean decodeDone = false;
+        boolean encodeDone = false;
+        boolean decodeInputDone = false;
+        final int TIMEOUT_US = 2500;
+        File pcmFile = new File(context.getCacheDir(), System.currentTimeMillis() + ".pcm");
+        FileChannel writeChannel = new FileOutputStream(pcmFile).getChannel();
+        try {
+            while (!decodeDone) {
+                if (!decodeInputDone) {
+                    boolean eof = false;
+                    int decodeInputIndex = decoder.dequeueInputBuffer(TIMEOUT_US);
+                    if (decodeInputIndex >= 0) {
+                        long sampleTimeUs = extractor.getSampleTime();
+                        if (sampleTimeUs == -1) {
+                            eof = true;
+                        } else if (sampleTimeUs < startTimeUs) {
+                            extractor.advance();
+                            continue;
+                        } else if (endTimeUs != null && sampleTimeUs > endTimeUs) {
+                            eof = true;
+                        }
+
+                        if (eof) {
+                            decodeInputDone = true;
+                            decoder.queueInputBuffer(decodeInputIndex, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM);
+                        } else {
+                            info.size = extractor.readSampleData(buffer, 0);
+                            info.presentationTimeUs = sampleTimeUs;
+                            info.flags = extractor.getSampleFlags();
+                            ByteBuffer inputBuffer = decoder.getInputBuffer(decodeInputIndex);
+                            inputBuffer.put(buffer);
+                            CL.i("audio decode queueInputBuffer " + info.presentationTimeUs / 1000);
+                            decoder.queueInputBuffer(decodeInputIndex, 0, info.size, info.presentationTimeUs, info.flags);
+                            extractor.advance();
+                        }
+
+                    }
+                }
+
+                while (!decodeDone) {
+                    int outputBufferIndex = decoder.dequeueOutputBuffer(info, TIMEOUT_US);
+                    if (outputBufferIndex == MediaCodec.INFO_TRY_AGAIN_LATER) {
+                        break;
+                    } else if (outputBufferIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
+                        MediaFormat newFormat = decoder.getOutputFormat();
+                        CL.i("audio decode newFormat = " + newFormat);
+                    } else if (outputBufferIndex < 0) {
+                        //ignore
+                        CL.e("unexpected result from audio decoder.dequeueOutputBuffer: " + outputBufferIndex);
+                    } else {
+                        if (info.flags == MediaCodec.BUFFER_FLAG_END_OF_STREAM) {
+                            decodeDone = true;
+                        } else {
+                            ByteBuffer decodeOutputBuffer = decoder.getOutputBuffer(outputBufferIndex);
+                            CL.i("audio decode saveFrame " + info.presentationTimeUs / 1000);
+                            writeChannel.write(decodeOutputBuffer);
+                            if (listener != null) {
+                                float decodeProgress = (info.presentationTimeUs - startTimeUs) /
+                                        (float) (endTimeUs == null ? durationUs : endTimeUs - startTimeUs);
+                                listener.onProgress(decodeProgress * 0.5f);
+                            }
+                        }
+                        decoder.releaseOutputBuffer(outputBufferIndex, false);
+                    }
+                }
+            }
+        } finally {
+            writeChannel.close();
+            extractor.release();
+            decoder.release();
+        }
+
+        int sampleRate = oriAudioFormat.getInteger(MediaFormat.KEY_SAMPLE_RATE);
+        int oriChannelCount = oriAudioFormat.getInteger(MediaFormat.KEY_CHANNEL_COUNT);
+        File wavFile = new File(context.getCacheDir(), pcmFile.getName() + ".wav");
+
+        int channelConfig = AudioFormat.CHANNEL_IN_MONO;
+        if (oriChannelCount == 2) {
+            channelConfig = AudioFormat.CHANNEL_IN_STEREO;
+        }
+        new PcmToWavUtil(sampleRate, channelConfig, oriChannelCount, AudioFormat.ENCODING_PCM_16BIT).pcmToWav(pcmFile.getAbsolutePath(), wavFile.getAbsolutePath());
+        //开始处理pcm
+        CL.i("start process pcm speed");
+        File outFile = new File(context.getCacheDir(), pcmFile.getName() + ".outpcm");
+        SoundTouch st = new SoundTouch();
+        st.setTempo(speed);
+
+        int res = st.processFile(wavFile.getAbsolutePath(), outFile.getAbsolutePath());
+        if (res < 0) {
+            pcmFile.delete();
+            wavFile.delete();
+            outFile.delete();
+            return;
+        }
+        //重新将速率变化过后的pcm写入
+        MediaExtractor pcmExtrator = new MediaExtractor();
+        pcmExtrator.setDataSource(outFile.getAbsolutePath());
+        audioTrack = VideoUtil.selectTrack(pcmExtrator, true);
+        pcmExtrator.selectTrack(audioTrack);
+        MediaFormat pcmTrackFormat = pcmExtrator.getTrackFormat(audioTrack);
+        maxBufferSize = getAudioMaxBufferSize(pcmTrackFormat);
+        durationUs = pcmTrackFormat.getLong(MediaFormat.KEY_DURATION);
+        buffer = ByteBuffer.allocateDirect(maxBufferSize);
+
+        int bitrate = getAudioBitrate(oriAudioFormat);
+        int channelCount = oriAudioFormat.getInteger(MediaFormat.KEY_CHANNEL_COUNT);
+        MediaFormat encodeFormat = MediaFormat.createAudioFormat(MediaFormat.MIMETYPE_AUDIO_AAC, sampleRate, channelCount);//参数对应-> mime type、采样率、声道数
+        encodeFormat.setInteger(MediaFormat.KEY_BIT_RATE, bitrate);//比特率
+        encodeFormat.setInteger(MediaFormat.KEY_AAC_PROFILE, MediaCodecInfo.CodecProfileLevel.AACObjectLC);
+        encodeFormat.setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, maxBufferSize);
+        MediaCodec encoder = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_AUDIO_AAC);
+        encoder.configure(encodeFormat, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE);
+        encoder.start();
+        boolean encodeInputDone = false;
+        long lastAudioFrameTimeUs = -1;
+        final int AAC_FRAME_TIME_US = 1024 * 1000 * 1000 / sampleRate;
+        boolean detectTimeError = false;
+        try {
+            while (!encodeDone) {
+                int inputBufferIndex = encoder.dequeueInputBuffer(TIMEOUT_US);
+                if (!encodeInputDone && inputBufferIndex >= 0) {
+                    long sampleTime = pcmExtrator.getSampleTime();
+                    if (sampleTime < 0) {
+                        encodeInputDone = true;
+                        encoder.queueInputBuffer(inputBufferIndex, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM);
+                    } else {
+                        int flags = pcmExtrator.getSampleFlags();
+                        buffer.clear();
+                        int size = pcmExtrator.readSampleData(buffer, 0);
+                        ByteBuffer inputBuffer = encoder.getInputBuffer(inputBufferIndex);
+                        inputBuffer.clear();
+                        inputBuffer.put(buffer);
+                        inputBuffer.position(0);
+                        CL.i("audio queuePcmBuffer " + sampleTime / 1000 + " size:" + size);
+                        encoder.queueInputBuffer(inputBufferIndex, 0, size, sampleTime, flags);
+                        pcmExtrator.advance();
+                    }
+                }
+
+                while (true) {
+                    int outputBufferIndex = encoder.dequeueOutputBuffer(info, TIMEOUT_US);
+                    if (outputBufferIndex == MediaCodec.INFO_TRY_AGAIN_LATER) {
+                        break;
+                    } else if (outputBufferIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
+                        MediaFormat newFormat = encoder.getOutputFormat();
+                        CL.i("audio decode newFormat = " + newFormat);
+                    } else if (outputBufferIndex < 0) {
+                        //ignore
+                        CL.e("unexpected result from audio decoder.dequeueOutputBuffer: " + outputBufferIndex);
+                    } else {
+                        if (info.flags == MediaCodec.BUFFER_FLAG_END_OF_STREAM) {
+                            encodeDone = true;
+                            break;
+                        }
+                        ByteBuffer encodeOutputBuffer = encoder.getOutputBuffer(outputBufferIndex);
+                        CL.i("audio writeSampleData " + info.presentationTimeUs + " size:" + info.size + " flags:" + info.flags);
+                        if (!detectTimeError && lastAudioFrameTimeUs != -1 && info.presentationTimeUs < lastAudioFrameTimeUs + AAC_FRAME_TIME_US) {
+                            //某些情况下帧时间会出错，目前未找到原因（系统相机录得双声道视频正常，我录的单声道视频不正常）
+                            CL.e("audio 时间戳错误，lastAudioFrameTimeUs:" + lastAudioFrameTimeUs + " " +
+                                    "info.presentationTimeUs:" + info.presentationTimeUs);
+                            detectTimeError = true;
+                        }
+                        if (detectTimeError) {
+                            info.presentationTimeUs = lastAudioFrameTimeUs + AAC_FRAME_TIME_US;
+                            CL.e("audio 时间戳错误，使用修正的时间戳:" + info.presentationTimeUs);
+                        }
+                        if (info.flags != MediaCodec.BUFFER_FLAG_CODEC_CONFIG) {
+                            lastAudioFrameTimeUs = info.presentationTimeUs;
+                        }
+                        mediaMuxer.writeSampleData(muxerAudioTrackIndex, encodeOutputBuffer, info);
+                        if (listener != null) {
+                            float encodeProgress = (info.presentationTimeUs - startTimeUs) /
+                                    (float) (endTimeUs == null ? durationUs : endTimeUs - startTimeUs);
+                            encodeProgress = encodeProgress < 0 ? 0 : encodeProgress;
+                            encodeProgress = encodeProgress > 1 ? 1 : encodeProgress;
+                            listener.onProgress(0.5f + encodeProgress * 0.5f);
+                        }
+
+                        encodeOutputBuffer.clear();
+                        encoder.releaseOutputBuffer(outputBufferIndex, false);
+                    }
+                }
+            }
+        } finally {
+            pcmFile.delete();
+            wavFile.delete();
+            outFile.delete();
+            pcmExtrator.release();
+            encoder.release();
+        }
+    }
+
+    public static int getAudioMaxBufferSize(MediaFormat format) {
+        if (format.containsKey(MediaFormat.KEY_MAX_INPUT_SIZE)) {
+            return format.getInteger(MediaFormat.KEY_MAX_INPUT_SIZE);
+        } else {
+            return 100 * 1000;
+        }
+    }
+
+    public static int getAudioBitrate(MediaFormat format) {
+        if (format.containsKey(MediaFormat.KEY_BIT_RATE)) {
+            return format.getInteger(MediaFormat.KEY_BIT_RATE);
+        } else {
+            return VideoProcessor.DEFAULT_AAC_BITRATE;
         }
     }
 }

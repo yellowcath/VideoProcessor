@@ -196,7 +196,7 @@ public class VideoDecodeThread extends Thread {
                             }
                             mOutputSurface.drawImage(false);
                             long presentationTimeNs = (info.presentationTimeUs - videoStartTimeUs) * 1000;
-                            if (mSpeed != null) {
+                            if (mSpeed !=  null) {
                                 presentationTimeNs /= mSpeed;
                             }
                             CL.i("drawImage,setPresentationTimeMs:" + presentationTimeNs / 1000 / 1000);

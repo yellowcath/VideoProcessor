@@ -7,6 +7,7 @@ import android.media.MediaFormat;
 import android.media.MediaMuxer;
 import android.view.Surface;
 import com.hw.videoprocessor.util.CL;
+import com.hw.videoprocessor.util.VideoProgressAve;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -38,6 +39,7 @@ public class VideoEncodeThread extends Thread implements IVideoEncodeThread {
     //    private volatile InputSurface mInputSurface;
     private volatile CountDownLatch mEglContextLatch;
     private volatile Surface mSurface;
+    private VideoProgressAve mProgressAve;
 
 
     public VideoEncodeThread(MediaExtractor extractor, MediaMuxer muxer,
@@ -142,7 +144,7 @@ public class VideoEncodeThread extends Thread implements IVideoEncodeThread {
                     info.presentationTimeUs = 0;
                 }
                 mMuxer.writeSampleData(videoTrackIndex, outputBuffer, info);
-
+                notifyProgress(info);
                 mEncoder.releaseOutputBuffer(outputBufferIndex, false);
                 if (info.flags == MediaCodec.BUFFER_FLAG_END_OF_STREAM) {
                     CL.i("encoderDone");
@@ -150,6 +152,13 @@ public class VideoEncodeThread extends Thread implements IVideoEncodeThread {
                 }
             }
         }
+    }
+
+    private void notifyProgress(MediaCodec.BufferInfo info) {
+        if (mProgressAve == null) {
+            return;
+        }
+        mProgressAve.setEncodeTimeStamp(info.flags == MediaCodec.BUFFER_FLAG_END_OF_STREAM ? Long.MAX_VALUE : info.presentationTimeUs);
     }
 
     @Override
@@ -164,5 +173,9 @@ public class VideoEncodeThread extends Thread implements IVideoEncodeThread {
 
     public Exception getException() {
         return mException;
+    }
+
+    public void setProgressAve(VideoProgressAve progressAve) {
+        mProgressAve = progressAve;
     }
 }
