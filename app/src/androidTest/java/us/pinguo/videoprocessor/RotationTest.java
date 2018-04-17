@@ -50,16 +50,15 @@ public class RotationTest {
         CL.setLogEnable(true);
         Context context = InstrumentationRegistry.getTargetContext();
         File videoFile = new File("/mnt/sdcard/DCIM/rotate.mp4");
-        File keyFrameFile = new File(context.getCacheDir(), "kf.mp4");
         File outFile = new File(context.getCacheDir(), "t.mp4");
-        VideoProcessor.processVideo(context, videoFile.getAbsolutePath(), keyFrameFile.getAbsolutePath(), null, null, null, null,
-                null, null, null, 0, null);
 
         MediaMetadataRetriever retriever = new MediaMetadataRetriever();
         retriever.setDataSource(videoFile.getAbsolutePath());
         int rotation = Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION));
         System.out.println("VideoRotation:" + rotation);
-        VideoProcessor.reverseVideoNoDecode(keyFrameFile.getAbsolutePath(), outFile.getAbsolutePath());
+        VideoProcessor.reverseVideo(context, videoFile.getAbsolutePath(), outFile.getAbsolutePath(), progress ->
+                Log.e("hwLog", "progress:" + progress)
+        );
         retriever.setDataSource(outFile.getAbsolutePath());
         rotation = Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION));
         System.out.println("processed VideoRotation:" + rotation);

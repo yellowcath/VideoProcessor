@@ -16,6 +16,7 @@ import com.hw.videoprocessor.util.AudioFadeUtil;
 import com.hw.videoprocessor.util.AudioUtil;
 import com.hw.videoprocessor.util.CL;
 import com.hw.videoprocessor.util.PcmToWavUtil;
+import com.hw.videoprocessor.util.VideoMultiStepProgress;
 import com.hw.videoprocessor.util.VideoProgressAve;
 import com.hw.videoprocessor.util.VideoProgressListener;
 
@@ -82,7 +83,7 @@ public class VideoProcessor {
     /**
      * 对视频先检查，如果不是全关键帧，先处理成所有帧都是关键帧，再逆序
      */
-    public static void reverseVideo(Context context, String input, String output) throws Exception {
+    public static void reverseVideo(Context context, String input, String output, @Nullable VideoProgressListener listener) throws Exception {
         File tempFile = new File(context.getCacheDir(), System.currentTimeMillis() + ".temp");
         File temp2File = new File(context.getCacheDir(), System.currentTimeMillis() + ".temp2");
         try {
@@ -106,24 +107,28 @@ public class VideoProcessor {
             }
             extractor.release();
             if (frameCount == keyFrameCount) {
-                reverseVideoNoDecode(input, output);
+                reverseVideoNoDecode(input, output,listener);
             } else {
+                VideoMultiStepProgress stepProgress = new VideoMultiStepProgress(new float[]{0.45f, 0.1f, 0.45f}, listener);
+                stepProgress.setCurrentStep(0);
                 int bitrateMultiple = (frameCount - keyFrameCount) / keyFrameCount;
                 MediaMetadataRetriever retriever = new MediaMetadataRetriever();
                 retriever.setDataSource(input);
                 int oriBitrate = Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_BITRATE));
                 int duration = Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION));
                 try {
-                    processVideo(context, input, tempFile.getAbsolutePath(), null, null, null, null, null, oriBitrate * bitrateMultiple, null, 0, null);
+                    processVideo(context, input, tempFile.getAbsolutePath(), null, null, null, null, null, oriBitrate * bitrateMultiple, null, 0, stepProgress);
                 } catch (MediaCodec.CodecException e) {
                     CL.e(e);
                     /** Nexus5上-1代表全关键帧*/
-                    processVideo(context, input, tempFile.getAbsolutePath(), null, null, null, null, null, oriBitrate * bitrateMultiple, null, -1, null);
+                    processVideo(context, input, tempFile.getAbsolutePath(), null, null, null, null, null, oriBitrate * bitrateMultiple, null, -1, stepProgress);
                 }
-                reverseVideoNoDecode(tempFile.getAbsolutePath(), temp2File.getAbsolutePath());
+                stepProgress.setCurrentStep(1);
+                reverseVideoNoDecode(tempFile.getAbsolutePath(), temp2File.getAbsolutePath(),stepProgress);
                 int oriIFrameInterval = (int) (keyFrameCount / (duration / 1000f));
                 oriIFrameInterval = oriIFrameInterval == 0 ? 1 : oriIFrameInterval;
-                processVideo(context, temp2File.getAbsolutePath(), output, null, null, null, null, null, oriBitrate, null, oriIFrameInterval, null);
+                stepProgress.setCurrentStep(2);
+                processVideo(context, temp2File.getAbsolutePath(), output, null, null, null, null, null, oriBitrate, null, oriIFrameInterval, stepProgress);
             }
         } finally {
             tempFile.delete();
@@ -239,10 +244,14 @@ public class VideoProcessor {
         }
     }
 
+    public static void reverseVideoNoDecode(String input, String output) throws IOException {
+        reverseVideoNoDecode(input, output, null);
+    }
+
     /**
      * 直接对视频进行逆序,用于所有帧都是关键帧的情况
      */
-    public static void reverseVideoNoDecode(String input, String output) throws IOException {
+    public static void reverseVideoNoDecode(String input, String output, @Nullable VideoProgressListener listener) throws IOException {
         MediaMetadataRetriever retriever = new MediaMetadataRetriever();
         retriever.setDataSource(input);
         int durationMs = Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION));
@@ -259,11 +268,14 @@ public class VideoProcessor {
         MediaMuxer mediaMuxer = new MediaMuxer(output, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4);
         extractor.selectTrack(videoTrackIndex);
         MediaFormat videoTrackFormat = extractor.getTrackFormat(videoTrackIndex);
+        long videoDurationUs = videoTrackFormat.getLong(MediaFormat.KEY_DURATION);
+        long audioDurationUs = 0;
         int videoMuxerTrackIndex = mediaMuxer.addTrack(videoTrackFormat);
         int audioMuxerTrackIndex = 0;
         if (audioExist) {
             MediaFormat audioTrackFormat = extractor.getTrackFormat(audioTrackIndex);
             audioMuxerTrackIndex = mediaMuxer.addTrack(audioTrackFormat);
+            audioDurationUs = audioTrackFormat.getLong(MediaFormat.KEY_DURATION);
         }
         mediaMuxer.start();
         int maxBufferSize = videoTrackFormat.getInteger(MediaFormat.KEY_MAX_INPUT_SIZE);
@@ -286,6 +298,12 @@ public class VideoProcessor {
                     break;
                 }
                 mediaMuxer.writeSampleData(videoMuxerTrackIndex, buffer, info);
+                if (listener != null) {
+                    float videoProgress = info.presentationTimeUs / (float) videoDurationUs;
+                    videoProgress = videoProgress > 1 ? 1 : videoProgress;
+                    videoProgress *= 0.7f;
+                    listener.onProgress(videoProgress);
+                }
                 long seekTime = sampleTime - MIN_FRAME_INTERVAL;
                 if (seekTime <= 0) {
                     break;
@@ -310,12 +328,21 @@ public class VideoProcessor {
                         break;
                     }
                     mediaMuxer.writeSampleData(audioMuxerTrackIndex, buffer, info);
+                    if (listener != null) {
+                        float audioProgress = info.presentationTimeUs / (float) audioDurationUs;
+                        audioProgress = audioProgress > 1 ? 1 : audioProgress;
+                        audioProgress = 0.7f + audioProgress * 0.3f;
+                        listener.onProgress(audioProgress);
+                    }
                     long seekTime = sampleTime - MIN_FRAME_INTERVAL;
                     if (seekTime <= 0) {
                         break;
                     }
                     extractor.seekTo(seekTime, MediaExtractor.SEEK_TO_PREVIOUS_SYNC);
                 }
+            }
+            if (listener != null) {
+                listener.onProgress(1f);
             }
         } finally {
             extractor.release();
