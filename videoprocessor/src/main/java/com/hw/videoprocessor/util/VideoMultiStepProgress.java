@@ -31,4 +31,8 @@ public class VideoMultiStepProgress implements VideoProgressListener {
             mListener.onProgress(totalProgress);
         }
     }
+
+    public void setListener(VideoProgressListener listener) {
+        mListener = listener;
+    }
 }
