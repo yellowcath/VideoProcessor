@@ -368,10 +368,12 @@ public class VideoProcessor {
         int channelCount;
         int audioBitrate;
         final int TIMEOUT_US = 2500;
-        MediaMuxer mediaMuxer = new MediaMuxer(output, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4);
         //重新将速率变化过后的pcm写入
         int oriVideoIndex = VideoUtil.selectTrack(oriExtrator, false);
         MediaFormat oriVideoFormat = oriExtrator.getTrackFormat(oriVideoIndex);
+        int rotation = oriVideoFormat.containsKey(MediaFormat.KEY_ROTATION) ? oriVideoFormat.getInteger(MediaFormat.KEY_ROTATION) : 0;
+        MediaMuxer mediaMuxer = new MediaMuxer(output, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4);
+        mediaMuxer.setOrientationHint(rotation);
         int muxerVideoIndex = mediaMuxer.addTrack(oriVideoFormat);
         int muxerAudioIndex;
         if (oriAudioIndex >= 0) {
