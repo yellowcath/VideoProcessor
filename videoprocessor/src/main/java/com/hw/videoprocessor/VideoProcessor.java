@@ -361,7 +361,7 @@ public class VideoProcessor {
                                      Integer startTimeMs, Integer endTimeMs,
                                      @IntRange(from = 0, to = 100) int videoVolume,
                                      @IntRange(from = 0, to = 100) int aacVolume,
-                                     float fadeInSec, float fadeOutSec, @Nullable VideoProgressListener listener) throws IOException {
+                                     float fadeInSec, float fadeOutSec) throws IOException {
         File cacheDir = new File(context.getCacheDir(), "pcm");
         cacheDir.mkdir();
 
