@@ -626,9 +626,9 @@ public class AudioUtil {
         encoder.configure(encodeFormat, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE);
         encoder.start();
         boolean encodeInputDone = false;
-//        long lastAudioFrameTimeUs = -1;
-//        final int AAC_FRAME_TIME_US = 1024 * 1000 * 1000 / sampleRate;
-//        boolean detectTimeError = false;
+        long lastAudioFrameTimeUs = -1;
+        final int AAC_FRAME_TIME_US = 1024 * 1000 * 1000 / sampleRate;
+        boolean detectTimeError = false;
         try {
             while (!encodeDone) {
                 int inputBufferIndex = encoder.dequeueInputBuffer(TIMEOUT_US);
@@ -668,19 +668,20 @@ public class AudioUtil {
                         }
                         ByteBuffer encodeOutputBuffer = encoder.getOutputBuffer(outputBufferIndex);
                         CL.i("audio writeSampleData " + info.presentationTimeUs + " size:" + info.size + " flags:" + info.flags);
-//                        if (!detectTimeError && lastAudioFrameTimeUs != -1 && info.presentationTimeUs < lastAudioFrameTimeUs + AAC_FRAME_TIME_US) {
-//                            //某些情况下帧时间会出错，目前未找到原因（系统相机录得双声道视频正常，我录的单声道视频不正常）
-//                            CL.e("audio 时间戳错误，lastAudioFrameTimeUs:" + lastAudioFrameTimeUs + " " +
-//                                    "info.presentationTimeUs:" + info.presentationTimeUs);
-//                            detectTimeError = true;
-//                        }
-//                        if (detectTimeError) {
-//                            info.presentationTimeUs = lastAudioFrameTimeUs + AAC_FRAME_TIME_US;
-//                            CL.e("audio 时间戳错误，使用修正的时间戳:" + info.presentationTimeUs);
-//                        }
-//                        if (info.flags != MediaCodec.BUFFER_FLAG_CODEC_CONFIG) {
-//                            lastAudioFrameTimeUs = info.presentationTimeUs;
-//                        }
+                        if (!detectTimeError && lastAudioFrameTimeUs != -1 && info.presentationTimeUs < lastAudioFrameTimeUs + AAC_FRAME_TIME_US) {
+                            //某些情况下帧时间会出错，目前未找到原因（系统相机录得双声道视频正常，我录的单声道视频不正常）
+                            CL.e("audio 时间戳错误，lastAudioFrameTimeUs:" + lastAudioFrameTimeUs + " " +
+                                    "info.presentationTimeUs:" + info.presentationTimeUs);
+                            detectTimeError = true;
+                        }
+                        if (detectTimeError) {
+                            info.presentationTimeUs = lastAudioFrameTimeUs + AAC_FRAME_TIME_US;
+                            CL.e("audio 时间戳错误，使用修正的时间戳:" + info.presentationTimeUs);
+                            detectTimeError = false;
+                        }
+                        if (info.flags != MediaCodec.BUFFER_FLAG_CODEC_CONFIG) {
+                            lastAudioFrameTimeUs = info.presentationTimeUs;
+                        }
                         mediaMuxer.writeSampleData(muxerAudioTrackIndex, encodeOutputBuffer, info);
                         if (listener != null) {
                             float encodeProgress = (info.presentationTimeUs - startTimeUs) /

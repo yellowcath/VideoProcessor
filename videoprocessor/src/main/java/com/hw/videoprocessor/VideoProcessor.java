@@ -535,9 +535,9 @@ public class VideoProcessor {
         encoder.start();
         boolean encodeInputDone = false;
         boolean encodeDone = false;
-//        long lastAudioFrameTimeUs = -1;
-//        final int AAC_FRAME_TIME_US = 1024 * 1000 * 1000 / sampleRate;
-//        boolean detectTimeError = false;
+        long lastAudioFrameTimeUs = -1;
+        final int AAC_FRAME_TIME_US = 1024 * 1000 * 1000 / sampleRate;
+        boolean detectTimeError = false;
         try {
             while (!encodeDone) {
                 int inputBufferIndex = encoder.dequeueInputBuffer(TIMEOUT_US);
@@ -577,19 +577,20 @@ public class VideoProcessor {
                         }
                         ByteBuffer encodeOutputBuffer = encoder.getOutputBuffer(outputBufferIndex);
                         CL.it(TAG, "audio writeSampleData " + info.presentationTimeUs + " size:" + info.size + " flags:" + info.flags);
-//                        if (!detectTimeError && lastAudioFrameTimeUs != -1 && info.presentationTimeUs < lastAudioFrameTimeUs + AAC_FRAME_TIME_US) {
-//                            //某些情况下帧时间会出错，目前未找到原因（系统相机录得双声道视频正常，我录的单声道视频不正常）
-//                            CL.et(TAG, "audio 时间戳错误，lastAudioFrameTimeUs:" + lastAudioFrameTimeUs + " " +
-//                                    "info.presentationTimeUs:" + info.presentationTimeUs);
-//                            detectTimeError = true;
-//                        }
-//                        if (detectTimeError) {
-//                            info.presentationTimeUs = lastAudioFrameTimeUs + AAC_FRAME_TIME_US;
-//                            CL.et(TAG, "audio 时间戳错误，使用修正的时间戳:" + info.presentationTimeUs);
-//                        }
-//                        if (info.flags != MediaCodec.BUFFER_FLAG_CODEC_CONFIG) {
-//                            lastAudioFrameTimeUs = info.presentationTimeUs;
-//                        }
+                        if (!detectTimeError && lastAudioFrameTimeUs != -1 && info.presentationTimeUs < lastAudioFrameTimeUs + AAC_FRAME_TIME_US) {
+                            //某些情况下帧时间会出错，目前未找到原因（系统相机录得双声道视频正常，我录的单声道视频不正常）
+                            CL.et(TAG, "audio 时间戳错误，lastAudioFrameTimeUs:" + lastAudioFrameTimeUs + " " +
+                                    "info.presentationTimeUs:" + info.presentationTimeUs);
+                            detectTimeError = true;
+                        }
+                        if (detectTimeError) {
+                            info.presentationTimeUs = lastAudioFrameTimeUs + AAC_FRAME_TIME_US;
+                            CL.et(TAG, "audio 时间戳错误，使用修正的时间戳:" + info.presentationTimeUs);
+                            detectTimeError = false;
+                        }
+                        if (info.flags != MediaCodec.BUFFER_FLAG_CODEC_CONFIG) {
+                            lastAudioFrameTimeUs = info.presentationTimeUs;
+                        }
                         mediaMuxer.writeSampleData(muxerAudioIndex, encodeOutputBuffer, info);
 
                         encodeOutputBuffer.clear();
@@ -604,11 +605,11 @@ public class VideoProcessor {
             oriExtrator.selectTrack(oriVideoIndex);
             oriExtrator.seekTo(startTimeUs, MediaExtractor.SEEK_TO_PREVIOUS_SYNC);
             maxBufferSize = oriVideoFormat.getInteger(MediaFormat.KEY_MAX_INPUT_SIZE);
-//            int frameRate = oriVideoFormat.containsKey(MediaFormat.KEY_FRAME_RATE) ? oriVideoFormat.getInteger(MediaFormat.KEY_FRAME_RATE) : DEFAULT_FRAME_RATE;
+            int frameRate = oriVideoFormat.containsKey(MediaFormat.KEY_FRAME_RATE) ? oriVideoFormat.getInteger(MediaFormat.KEY_FRAME_RATE) : DEFAULT_FRAME_RATE;
             buffer = ByteBuffer.allocateDirect(maxBufferSize);
-//            final int VIDEO_FRAME_TIME_US = (int) (1000 * 1000f / frameRate);
-//            long lastVideoFrameTimeUs = -1;
-//            detectTimeError = false;
+            final int VIDEO_FRAME_TIME_US = (int) (1000 * 1000f / frameRate);
+            long lastVideoFrameTimeUs = -1;
+            detectTimeError = false;
             while (true) {
                 long sampleTimeUs = oriExtrator.getSampleTime();
                 if (sampleTimeUs == -1) {
@@ -628,19 +629,20 @@ public class VideoProcessor {
                     break;
                 }
 //                //写入视频
-//                if (!detectTimeError && lastVideoFrameTimeUs != -1 && info.presentationTimeUs < lastVideoFrameTimeUs + VIDEO_FRAME_TIME_US) {
-//                    //某些视频帧时间会出错
-//                    CL.et(TAG, "video 时间戳错误，lastVideoFrameTimeUs:" + lastVideoFrameTimeUs + " " +
-//                            "info.presentationTimeUs:" + info.presentationTimeUs+" VIDEO_FRAME_TIME_US:"+VIDEO_FRAME_TIME_US);
-//                    detectTimeError = true;
-//                }
-//                if (detectTimeError) {
-//                    info.presentationTimeUs = lastVideoFrameTimeUs + VIDEO_FRAME_TIME_US;
-//                    CL.et(TAG, "video 时间戳错误，使用修正的时间戳:" + info.presentationTimeUs);
-//                }
-//                if (info.flags != MediaCodec.BUFFER_FLAG_CODEC_CONFIG) {
-//                    lastVideoFrameTimeUs = info.presentationTimeUs;
-//                }
+                if (!detectTimeError && lastVideoFrameTimeUs != -1 && info.presentationTimeUs < lastVideoFrameTimeUs + VIDEO_FRAME_TIME_US) {
+                    //某些视频帧时间会出错
+                    CL.et(TAG, "video 时间戳错误，lastVideoFrameTimeUs:" + lastVideoFrameTimeUs + " " +
+                            "info.presentationTimeUs:" + info.presentationTimeUs + " VIDEO_FRAME_TIME_US:" + VIDEO_FRAME_TIME_US);
+                    detectTimeError = true;
+                }
+                if (detectTimeError) {
+                    info.presentationTimeUs = lastVideoFrameTimeUs + VIDEO_FRAME_TIME_US;
+                    CL.et(TAG, "video 时间戳错误，使用修正的时间戳:" + info.presentationTimeUs);
+                    detectTimeError = false;
+                }
+                if (info.flags != MediaCodec.BUFFER_FLAG_CODEC_CONFIG) {
+                    lastVideoFrameTimeUs = info.presentationTimeUs;
+                }
                 CL.wt(TAG, "video writeSampleData:" + info.presentationTimeUs + " type:" + info.flags + " size:" + info.size);
                 mediaMuxer.writeSampleData(muxerVideoIndex, buffer, info);
                 oriExtrator.advance();
