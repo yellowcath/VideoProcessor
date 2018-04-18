@@ -231,7 +231,7 @@ public class AudioUtil {
             }
             return new Pair<>(channelCount, sampleRate);
         } catch (Exception e) {
-            e.printStackTrace();
+            CL.e(e);
             return new Pair<>(channelCount, sampleRate);
         } finally {
             temp1.delete();

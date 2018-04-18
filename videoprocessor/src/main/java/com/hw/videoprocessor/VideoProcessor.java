@@ -11,7 +11,6 @@ import android.media.MediaMetadataRetriever;
 import android.media.MediaMuxer;
 import android.support.annotation.IntRange;
 import android.support.annotation.Nullable;
-import android.util.Log;
 import android.util.Pair;
 import com.hw.videoprocessor.util.AudioFadeUtil;
 import com.hw.videoprocessor.util.AudioUtil;
@@ -358,21 +357,20 @@ public class VideoProcessor {
      * @param videoVolume 0静音，50表示原音
      * @param aacVolume   0静音，50表示原音
      */
-    public static void mixAudioTrack(Context context, String videoInput, String aacInput, String output,
+    public static void mixAudioTrack(Context context, final String videoInput, final String aacInput, final String output,
                                      Integer startTimeMs, Integer endTimeMs,
                                      @IntRange(from = 0, to = 100) int videoVolume,
                                      @IntRange(from = 0, to = 100) int aacVolume,
                                      float fadeInSec, float fadeOutSec, @Nullable VideoProgressListener listener) throws IOException {
-        long s1 = System.currentTimeMillis();
         File cacheDir = new File(context.getCacheDir(), "pcm");
         cacheDir.mkdir();
 
-        File videoPcmFile = new File(cacheDir, "video_" + System.currentTimeMillis() + ".pcm");
+        final File videoPcmFile = new File(cacheDir, "video_" + System.currentTimeMillis() + ".pcm");
         File aacPcmFile = new File(cacheDir, "aac_" + System.currentTimeMillis() + ".pcm");
 
-        Integer startTimeUs = startTimeMs == null ? 0 : startTimeMs * 1000;
-        Integer endTimeUs = endTimeMs == null ? null : endTimeMs * 1000;
-        int videoDurationMs;
+        final Integer startTimeUs = startTimeMs == null ? 0 : startTimeMs * 1000;
+        final Integer endTimeUs = endTimeMs == null ? null : endTimeMs * 1000;
+        final int videoDurationMs;
         if (endTimeUs == null) {
             MediaMetadataRetriever retriever = new MediaMetadataRetriever();
             retriever.setDataSource(videoInput);
@@ -382,7 +380,7 @@ public class VideoProcessor {
         }
         MediaMetadataRetriever retriever = new MediaMetadataRetriever();
         retriever.setDataSource(aacInput);
-        int aacDurationMs = Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION));
+        final int aacDurationMs = Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION));
         retriever.release();
 
         MediaExtractor oriExtrator = new MediaExtractor();
@@ -406,10 +404,40 @@ public class VideoProcessor {
         int muxerVideoIndex = mediaMuxer.addTrack(oriVideoFormat);
         int muxerAudioIndex;
         if (oriAudioIndex >= 0) {
+            long s1 = System.currentTimeMillis();
+            final CountDownLatch latch = new CountDownLatch(2);
             //音频转化为PCM
-            AudioUtil.decodeToPCM(videoInput, videoPcmFile.getAbsolutePath(), startTimeUs, endTimeUs);
-            AudioUtil.decodeToPCM(aacInput, aacPcmFile.getAbsolutePath(), 0,
-                    aacDurationMs > videoDurationMs ? videoDurationMs * 1000 : aacDurationMs * 1000);
+            new Thread(new Runnable() {
+                @Override
+                public void run() {
+                    try {
+                        AudioUtil.decodeToPCM(videoInput, videoPcmFile.getAbsolutePath(), startTimeUs, endTimeUs);
+                    } catch (IOException e) {
+                        throw new RuntimeException(e);
+                    } finally {
+                        latch.countDown();
+                    }
+                }
+            }).start();
+            final File finalAacPcmFile = aacPcmFile;
+            new Thread(new Runnable() {
+                @Override
+                public void run() {
+                    try {
+                        AudioUtil.decodeToPCM(aacInput, finalAacPcmFile.getAbsolutePath(), 0, aacDurationMs > videoDurationMs ? videoDurationMs * 1000 : aacDurationMs * 1000);
+                    } catch (IOException e) {
+                        throw new RuntimeException(e);
+                    } finally {
+                        latch.countDown();
+                    }
+                }
+            }).start();
+            try {
+                latch.await();
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+            long s2 = System.currentTimeMillis();
 
             MediaFormat oriAudioFormat = oriExtrator.getTrackFormat(oriAudioIndex);
             audioBitrate = AudioUtil.getAudioBitrate(oriAudioFormat);
@@ -417,13 +445,14 @@ public class VideoProcessor {
 
             //检查两段音频格式是否一致,不一致则统一转换为单声道+44100
             Pair<Integer, Integer> resultPair = AudioUtil.checkAndAdjustAudioFormat(videoPcmFile.getAbsolutePath(),
-                     aacPcmFile.getAbsolutePath(),
+                    aacPcmFile.getAbsolutePath(),
                     oriExtrator.getTrackFormat(oriAudioIndex),
                     aacExtractor.getTrackFormat(aacAudioIndex)
             );
             channelCount = resultPair.first;
             sampleRate = resultPair.second;
             aacExtractor.release();
+            long s3 = System.currentTimeMillis();
 
             //检查音频长度是否需要重复填充
             if (AUDIO_MIX_REPEAT) {
@@ -435,6 +464,7 @@ public class VideoProcessor {
             AudioUtil.mixPcm(videoPcmFile.getAbsolutePath(), aacPcmFile.getAbsolutePath(), adjustedPcm.getAbsolutePath()
                     , videoVolume, aacVolume);
             wavFile = new File(context.getCacheDir(), adjustedPcm.getName() + ".wav");
+            long s4 = System.currentTimeMillis();
 
             int channelConfig = AudioFormat.CHANNEL_IN_MONO;
             if (channelCount == 2) {
@@ -446,7 +476,8 @@ public class VideoProcessor {
             }
             //PCM转WAV
             new PcmToWavUtil(sampleRate, channelConfig, channelCount, AudioFormat.ENCODING_PCM_16BIT).pcmToWav(adjustedPcm.getAbsolutePath(), wavFile.getAbsolutePath());
-
+            long s5 = System.currentTimeMillis();
+            CL.et("hwLog", String.format("decode:%dms,resample:%dms,mix:%dms,fade:%dms", s2 - s1, s3 - s2, s4 - s3, s5 - s4));
         } else {
             AudioUtil.decodeToPCM(aacInput, aacPcmFile.getAbsolutePath(), 0,
                     aacDurationMs > videoDurationMs ? videoDurationMs * 1000 : aacDurationMs * 1000);
@@ -483,7 +514,6 @@ public class VideoProcessor {
             //PCM转WAV
             new PcmToWavUtil(sampleRate, channelConfig, channelCount, AudioFormat.ENCODING_PCM_16BIT).pcmToWav(adjustedPcm.getAbsolutePath(), wavFile.getAbsolutePath());
         }
-        long s2 = System.currentTimeMillis();
 
         //重新写入音频
         mediaMuxer.start();
@@ -567,7 +597,6 @@ public class VideoProcessor {
                     }
                 }
             }
-            long s3 = System.currentTimeMillis();
             //重新将视频写入
             if (oriAudioIndex >= 0) {
                 oriExtrator.unselectTrack(oriAudioIndex);
@@ -575,7 +604,7 @@ public class VideoProcessor {
             oriExtrator.selectTrack(oriVideoIndex);
             oriExtrator.seekTo(startTimeUs, MediaExtractor.SEEK_TO_PREVIOUS_SYNC);
             maxBufferSize = oriVideoFormat.getInteger(MediaFormat.KEY_MAX_INPUT_SIZE);
-            int frameRate = oriVideoFormat.containsKey(MediaFormat.KEY_FRAME_RATE) ? oriVideoFormat.getInteger(MediaFormat.KEY_FRAME_RATE) : DEFAULT_FRAME_RATE;
+//            int frameRate = oriVideoFormat.containsKey(MediaFormat.KEY_FRAME_RATE) ? oriVideoFormat.getInteger(MediaFormat.KEY_FRAME_RATE) : DEFAULT_FRAME_RATE;
             buffer = ByteBuffer.allocateDirect(maxBufferSize);
 //            final int VIDEO_FRAME_TIME_US = (int) (1000 * 1000f / frameRate);
 //            long lastVideoFrameTimeUs = -1;
@@ -616,8 +645,6 @@ public class VideoProcessor {
                 mediaMuxer.writeSampleData(muxerVideoIndex, buffer, info);
                 oriExtrator.advance();
             }
-            long s4 = System.currentTimeMillis();
-            Log.e("hwLog", String.format("输出合格的pcm:%dms,重新编码aac:%dms,重新写入视频:%dms", s2 - s1, s3 - s2, s4 - s3));
         } finally {
             aacPcmFile.delete();
             videoPcmFile.delete();
