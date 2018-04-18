@@ -177,7 +177,7 @@ public class AudioUtil {
     }
 
     /**
-     * 检查两段音频格式是否一致,不一致则统一转换为单声道+44100
+     * 检查两段音频格式是否一致,不一致则统一转换为单声道,采样率转为较小的一个
      */
     public static Pair<Integer, Integer> checkAndAdjustAudioFormat(String pcm1, String pcm2, MediaFormat format1, MediaFormat format2) {
         final int DEFAULT_SAMPLE_RATE = 44100;
@@ -215,15 +215,15 @@ public class AudioUtil {
                 channelCount = channelCount1;
             }
             if (sampleRate1 != sampleRate2) {
-                sampleRate = DEFAULT_SAMPLE_RATE;
-                if (sampleRate1 != DEFAULT_SAMPLE_RATE) {
-                    reSamplePcm(pcm1, temp1.getAbsolutePath(), sampleRate1, DEFAULT_SAMPLE_RATE, channelCount1);
+                sampleRate = Math.min(sampleRate1,sampleRate2);
+                if (sampleRate1 != sampleRate) {
+                    reSamplePcm(pcm1, temp1.getAbsolutePath(), sampleRate1, sampleRate, channelCount1);
                     File file = new File(pcm1);
                     file.delete();
                     temp1.renameTo(file);
                 }
-                if (sampleRate2 != DEFAULT_SAMPLE_RATE) {
-                    reSamplePcm(pcm2, temp2.getAbsolutePath(), sampleRate2, DEFAULT_SAMPLE_RATE, channelCount2);
+                if (sampleRate2 != sampleRate) {
+                    reSamplePcm(pcm2, temp2.getAbsolutePath(), sampleRate2, sampleRate, channelCount2);
                     File file = new File(pcm2);
                     file.delete();
                     temp2.renameTo(file);
