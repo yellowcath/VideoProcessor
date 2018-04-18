@@ -29,6 +29,7 @@ import android.widget.VideoView;
 import com.hw.videoprocessor.VideoEffects;
 import com.hw.videoprocessor.VideoProcessor;
 import com.hw.videoprocessor.util.CL;
+import com.hw.videoprocessor.util.VideoProgressListener;
 import com.jaygoo.widget.RangeSeekBar;
 
 import java.io.File;
@@ -439,8 +440,13 @@ public class MainActivity extends AppCompatActivity {
                 try {
                     final String aacPath = new File(getCacheDir(), "test.aac").getAbsolutePath();
                     copyAssets("test.aac", aacPath);
-                    VideoProcessor.mixAudioTrack(getApplicationContext(), selectVideoPath, aacPath, filePath, startMs, endMs, 50, 50,
-                            1, 1);
+                    VideoProcessor.mixAudioTrack(getApplicationContext(), selectVideoPath, aacPath, filePath, startMs, endMs, 100, 100,
+                            1, 1, new VideoProgressListener() {
+                                @Override
+                                public void onProgress(float progress) {
+//                                    Log.e("hw")
+                                }
+                            });
                     Intent intent = new Intent(MainActivity.this, PreviewActivity.class);
                     intent.putExtra(FILEPATH, filePath);
                     startActivity(intent);

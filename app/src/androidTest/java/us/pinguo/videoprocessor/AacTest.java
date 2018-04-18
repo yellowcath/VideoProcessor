@@ -1,13 +1,10 @@
 package us.pinguo.videoprocessor;
 
-import android.Manifest;
 import android.media.MediaExtractor;
 import android.media.MediaFormat;
-import android.support.test.rule.GrantPermissionRule;
 import android.support.test.runner.AndroidJUnit4;
 import com.hw.videoprocessor.VideoUtil;
 import com.hw.videoprocessor.util.AudioUtil;
-import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
@@ -24,17 +21,15 @@ import java.nio.channels.FileChannel;
  */
 @RunWith(AndroidJUnit4.class)
 public class AacTest {
-    //    @Test
-//    public void testFill() throws Exception {
-//        File pcmFile = new File("/mnt/sdcard/t1.pcm");
-//        AudioUtil.copyFile(pcmFile.getAbsolutePath(),"/mnt/sdcard/t2.pcm");
-//        File filed = checkAndFillPcm(3564,new File("/mnt/sdcard/t2.pcm"),10000);
-//        AudioUtil.copyFile(filed.getAbsolutePath(),"/mnt/sdcard/filed.pcm");
-//    }
-    @Rule
-    public GrantPermissionRule permissionRule = GrantPermissionRule.grant(Manifest.permission.WRITE_EXTERNAL_STORAGE);
-
     @Test
+    public void test() throws Exception {
+        File videoFile = new File("/mnt/sdcard/Movies/scale_video14.mp4");
+        File pcmFile = new File("/mnt/sdcard/14.pcm.mp4");
+        AudioUtil.decodeToPCM(videoFile.getAbsolutePath(), pcmFile.getAbsolutePath(), null, null);
+//        AudioUtil.copyFile(pcmFile.getAbsolutePath(), "/mnt/sdcard/t2.pcm");
+    }
+
+    //    @Test
     public void testResample() throws Exception {
         File aacFile = new File("/mnt/sdcard/6c.aac");
         MediaExtractor extractor = new MediaExtractor();

@@ -11,6 +11,7 @@ import android.media.MediaMetadataRetriever;
 import android.media.MediaMuxer;
 import android.support.annotation.IntRange;
 import android.support.annotation.Nullable;
+import android.util.Log;
 import android.util.Pair;
 import com.hw.videoprocessor.util.AudioFadeUtil;
 import com.hw.videoprocessor.util.AudioUtil;
@@ -107,7 +108,7 @@ public class VideoProcessor {
             }
             extractor.release();
             if (frameCount == keyFrameCount) {
-                reverseVideoNoDecode(input, output,listener);
+                reverseVideoNoDecode(input, output, listener);
             } else {
                 VideoMultiStepProgress stepProgress = new VideoMultiStepProgress(new float[]{0.45f, 0.1f, 0.45f}, listener);
                 stepProgress.setCurrentStep(0);
@@ -124,7 +125,7 @@ public class VideoProcessor {
                     processVideo(context, input, tempFile.getAbsolutePath(), null, null, null, null, null, oriBitrate * bitrateMultiple, null, -1, stepProgress);
                 }
                 stepProgress.setCurrentStep(1);
-                reverseVideoNoDecode(tempFile.getAbsolutePath(), temp2File.getAbsolutePath(),stepProgress);
+                reverseVideoNoDecode(tempFile.getAbsolutePath(), temp2File.getAbsolutePath(), stepProgress);
                 int oriIFrameInterval = (int) (keyFrameCount / (duration / 1000f));
                 oriIFrameInterval = oriIFrameInterval == 0 ? 1 : oriIFrameInterval;
                 stepProgress.setCurrentStep(2);
@@ -361,7 +362,8 @@ public class VideoProcessor {
                                      Integer startTimeMs, Integer endTimeMs,
                                      @IntRange(from = 0, to = 100) int videoVolume,
                                      @IntRange(from = 0, to = 100) int aacVolume,
-                                     float fadeInSec, float fadeOutSec) throws IOException {
+                                     float fadeInSec, float fadeOutSec, @Nullable VideoProgressListener listener) throws IOException {
+        long s1 = System.currentTimeMillis();
         File cacheDir = new File(context.getCacheDir(), "pcm");
         cacheDir.mkdir();
 
@@ -410,18 +412,17 @@ public class VideoProcessor {
                     aacDurationMs > videoDurationMs ? videoDurationMs * 1000 : aacDurationMs * 1000);
 
             MediaFormat oriAudioFormat = oriExtrator.getTrackFormat(oriAudioIndex);
-            sampleRate = oriAudioFormat.getInteger(MediaFormat.KEY_SAMPLE_RATE);
             audioBitrate = AudioUtil.getAudioBitrate(oriAudioFormat);
             muxerAudioIndex = mediaMuxer.addTrack(oriAudioFormat);
 
             //检查两段音频格式是否一致,不一致则统一转换为单声道+44100
             Pair<Integer, Integer> resultPair = AudioUtil.checkAndAdjustAudioFormat(videoPcmFile.getAbsolutePath(),
-                    aacPcmFile.getAbsolutePath(),
+                     aacPcmFile.getAbsolutePath(),
                     oriExtrator.getTrackFormat(oriAudioIndex),
                     aacExtractor.getTrackFormat(aacAudioIndex)
             );
             channelCount = resultPair.first;
-            int adjustedSampleRate = resultPair.second;
+            sampleRate = resultPair.second;
             aacExtractor.release();
 
             //检查音频长度是否需要重复填充
@@ -444,7 +445,7 @@ public class VideoProcessor {
                 AudioFadeUtil.audioFade(adjustedPcm.getAbsolutePath(), sampleRate, channelCount, fadeInSec, fadeOutSec);
             }
             //PCM转WAV
-            new PcmToWavUtil(adjustedSampleRate, channelConfig, channelCount, AudioFormat.ENCODING_PCM_16BIT).pcmToWav(adjustedPcm.getAbsolutePath(), wavFile.getAbsolutePath());
+            new PcmToWavUtil(sampleRate, channelConfig, channelCount, AudioFormat.ENCODING_PCM_16BIT).pcmToWav(adjustedPcm.getAbsolutePath(), wavFile.getAbsolutePath());
 
         } else {
             AudioUtil.decodeToPCM(aacInput, aacPcmFile.getAbsolutePath(), 0,
@@ -482,6 +483,7 @@ public class VideoProcessor {
             //PCM转WAV
             new PcmToWavUtil(sampleRate, channelConfig, channelCount, AudioFormat.ENCODING_PCM_16BIT).pcmToWav(adjustedPcm.getAbsolutePath(), wavFile.getAbsolutePath());
         }
+        long s2 = System.currentTimeMillis();
 
         //重新写入音频
         mediaMuxer.start();
@@ -503,9 +505,9 @@ public class VideoProcessor {
         encoder.start();
         boolean encodeInputDone = false;
         boolean encodeDone = false;
-        long lastAudioFrameTimeUs = -1;
-        final int AAC_FRAME_TIME_US = 1024 * 1000 * 1000 / sampleRate;
-        boolean detectTimeError = false;
+//        long lastAudioFrameTimeUs = -1;
+//        final int AAC_FRAME_TIME_US = 1024 * 1000 * 1000 / sampleRate;
+//        boolean detectTimeError = false;
         try {
             while (!encodeDone) {
                 int inputBufferIndex = encoder.dequeueInputBuffer(TIMEOUT_US);
@@ -545,17 +547,19 @@ public class VideoProcessor {
                         }
                         ByteBuffer encodeOutputBuffer = encoder.getOutputBuffer(outputBufferIndex);
                         CL.it(TAG, "audio writeSampleData " + info.presentationTimeUs + " size:" + info.size + " flags:" + info.flags);
-                        if (!detectTimeError && lastAudioFrameTimeUs != -1 && info.presentationTimeUs < lastAudioFrameTimeUs + AAC_FRAME_TIME_US) {
-                            //某些情况下帧时间会出错，目前未找到原因（系统相机录得双声道视频正常，我录的单声道视频不正常）
-                            CL.et(TAG, "audio 时间戳错误，lastAudioFrameTimeUs:" + lastAudioFrameTimeUs + " " +
-                                    "info.presentationTimeUs:" + info.presentationTimeUs);
-                            detectTimeError = true;
-                        }
-                        if (detectTimeError) {
-                            info.presentationTimeUs = lastAudioFrameTimeUs + AAC_FRAME_TIME_US;
-                            CL.et(TAG, "audio 时间戳错误，使用修正的时间戳:" + info.presentationTimeUs);
-                        }
-                        lastAudioFrameTimeUs = info.presentationTimeUs;
+//                        if (!detectTimeError && lastAudioFrameTimeUs != -1 && info.presentationTimeUs < lastAudioFrameTimeUs + AAC_FRAME_TIME_US) {
+//                            //某些情况下帧时间会出错，目前未找到原因（系统相机录得双声道视频正常，我录的单声道视频不正常）
+//                            CL.et(TAG, "audio 时间戳错误，lastAudioFrameTimeUs:" + lastAudioFrameTimeUs + " " +
+//                                    "info.presentationTimeUs:" + info.presentationTimeUs);
+//                            detectTimeError = true;
+//                        }
+//                        if (detectTimeError) {
+//                            info.presentationTimeUs = lastAudioFrameTimeUs + AAC_FRAME_TIME_US;
+//                            CL.et(TAG, "audio 时间戳错误，使用修正的时间戳:" + info.presentationTimeUs);
+//                        }
+//                        if (info.flags != MediaCodec.BUFFER_FLAG_CODEC_CONFIG) {
+//                            lastAudioFrameTimeUs = info.presentationTimeUs;
+//                        }
                         mediaMuxer.writeSampleData(muxerAudioIndex, encodeOutputBuffer, info);
 
                         encodeOutputBuffer.clear();
@@ -563,6 +567,7 @@ public class VideoProcessor {
                     }
                 }
             }
+            long s3 = System.currentTimeMillis();
             //重新将视频写入
             if (oriAudioIndex >= 0) {
                 oriExtrator.unselectTrack(oriAudioIndex);
@@ -572,9 +577,9 @@ public class VideoProcessor {
             maxBufferSize = oriVideoFormat.getInteger(MediaFormat.KEY_MAX_INPUT_SIZE);
             int frameRate = oriVideoFormat.containsKey(MediaFormat.KEY_FRAME_RATE) ? oriVideoFormat.getInteger(MediaFormat.KEY_FRAME_RATE) : DEFAULT_FRAME_RATE;
             buffer = ByteBuffer.allocateDirect(maxBufferSize);
-            final int VIDEO_FRAME_TIME_US = (int) (1000 * 1000f / frameRate);
-            long lastVideoFrameTimeUs = -1;
-            detectTimeError = false;
+//            final int VIDEO_FRAME_TIME_US = (int) (1000 * 1000f / frameRate);
+//            long lastVideoFrameTimeUs = -1;
+//            detectTimeError = false;
             while (true) {
                 long sampleTimeUs = oriExtrator.getSampleTime();
                 if (sampleTimeUs == -1) {
@@ -593,22 +598,26 @@ public class VideoProcessor {
                 if (info.size < 0) {
                     break;
                 }
-                //写入视频
-                if (!detectTimeError && lastVideoFrameTimeUs != -1 && info.presentationTimeUs < lastVideoFrameTimeUs + VIDEO_FRAME_TIME_US) {
-                    //某些视频帧时间会出错
-                    CL.et(TAG, "video 时间戳错误，lastVideoFrameTimeUs:" + lastVideoFrameTimeUs + " " +
-                            "info.presentationTimeUs:" + info.presentationTimeUs);
-                    detectTimeError = true;
-                }
-                if (detectTimeError) {
-                    info.presentationTimeUs = lastVideoFrameTimeUs + VIDEO_FRAME_TIME_US;
-                    CL.et(TAG, "video 时间戳错误，使用修正的时间戳:" + info.presentationTimeUs);
-                }
-                lastVideoFrameTimeUs = info.presentationTimeUs;
-                CL.et(TAG, "video writeSampleData:" + info.presentationTimeUs + " type:" + info.flags + " size:" + info.size);
+//                //写入视频
+//                if (!detectTimeError && lastVideoFrameTimeUs != -1 && info.presentationTimeUs < lastVideoFrameTimeUs + VIDEO_FRAME_TIME_US) {
+//                    //某些视频帧时间会出错
+//                    CL.et(TAG, "video 时间戳错误，lastVideoFrameTimeUs:" + lastVideoFrameTimeUs + " " +
+//                            "info.presentationTimeUs:" + info.presentationTimeUs+" VIDEO_FRAME_TIME_US:"+VIDEO_FRAME_TIME_US);
+//                    detectTimeError = true;
+//                }
+//                if (detectTimeError) {
+//                    info.presentationTimeUs = lastVideoFrameTimeUs + VIDEO_FRAME_TIME_US;
+//                    CL.et(TAG, "video 时间戳错误，使用修正的时间戳:" + info.presentationTimeUs);
+//                }
+//                if (info.flags != MediaCodec.BUFFER_FLAG_CODEC_CONFIG) {
+//                    lastVideoFrameTimeUs = info.presentationTimeUs;
+//                }
+                CL.wt(TAG, "video writeSampleData:" + info.presentationTimeUs + " type:" + info.flags + " size:" + info.size);
                 mediaMuxer.writeSampleData(muxerVideoIndex, buffer, info);
                 oriExtrator.advance();
             }
+            long s4 = System.currentTimeMillis();
+            Log.e("hwLog", String.format("输出合格的pcm:%dms,重新编码aac:%dms,重新写入视频:%dms", s2 - s1, s3 - s2, s4 - s3));
         } finally {
             aacPcmFile.delete();
             videoPcmFile.delete();
