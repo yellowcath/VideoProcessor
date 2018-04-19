@@ -158,7 +158,7 @@ public class VideoEncodeThread extends Thread implements IVideoEncodeThread {
         if (mProgressAve == null) {
             return;
         }
-        mProgressAve.setEncodeTimeStamp(info.flags == MediaCodec.BUFFER_FLAG_END_OF_STREAM ? Long.MAX_VALUE : info.presentationTimeUs);
+        mProgressAve.setEncodeTimeStamp((info.flags & MediaCodec.BUFFER_FLAG_END_OF_STREAM)>0 ? Long.MAX_VALUE : info.presentationTimeUs);
     }
 
     @Override
