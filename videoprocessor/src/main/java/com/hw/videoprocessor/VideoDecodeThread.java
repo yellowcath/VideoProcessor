@@ -85,12 +85,15 @@ public class VideoDecodeThread extends Thread {
         mOutputSurface = new OutputSurface();
         mDecoder.configure(inputFormat, mOutputSurface.getSurface(), null, 0);
         mDecoder.start();
-
+        //丢帧判断
         int frameIntervalForDrop = 0;
         int dropCount = 0;
         int frameIndex = 1;
         if (mFrameRate != null && VideoProcessor.DROP_FRAMES) {
             int sourceFrameRate = inputFormat.containsKey(MediaFormat.KEY_FRAME_RATE) ? inputFormat.getInteger(MediaFormat.KEY_FRAME_RATE) : 0;
+            if (mSpeed != null) {
+                sourceFrameRate *= mSpeed;
+            }
             if (sourceFrameRate != 0 && sourceFrameRate > mFrameRate) {
                 frameIntervalForDrop = mFrameRate / (sourceFrameRate - mFrameRate);
                 frameIntervalForDrop = frameIntervalForDrop == 0 ? 1 : frameIntervalForDrop;
@@ -196,7 +199,7 @@ public class VideoDecodeThread extends Thread {
                             }
                             mOutputSurface.drawImage(false);
                             long presentationTimeNs = (info.presentationTimeUs - videoStartTimeUs) * 1000;
-                            if (mSpeed !=  null) {
+                            if (mSpeed != null) {
                                 presentationTimeNs /= mSpeed;
                             }
                             CL.i("drawImage,setPresentationTimeMs:" + presentationTimeNs / 1000 / 1000);

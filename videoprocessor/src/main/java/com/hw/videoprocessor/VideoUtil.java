@@ -236,6 +236,29 @@ public class VideoUtil {
         return (int) (bitrateMultiple * oriBitrate);
     }
 
+    public static Pair<Integer,Integer> getVideoFrameCount(String input) throws IOException {
+        MediaExtractor extractor = new MediaExtractor();
+        extractor.setDataSource(input);
+        int trackIndex = VideoUtil.selectTrack(extractor, false);
+        extractor.selectTrack(trackIndex);
+        int keyFrameCount = 0;
+        int frameCount = 0;
+        while (true) {
+            int flags = extractor.getSampleFlags();
+            if (flags > 0 && (flags & MediaExtractor.SAMPLE_FLAG_SYNC) != 0) {
+                keyFrameCount++;
+            }
+            long sampleTime = extractor.getSampleTime();
+            if (sampleTime < 0) {
+                break;
+            }
+            frameCount++;
+            extractor.advance();
+        }
+        extractor.release();
+        return new Pair<>(keyFrameCount,frameCount);
+    }
+
     public static int getFrameRate(String videoPath) {
         MediaExtractor extractor = new MediaExtractor();
         try {
