@@ -214,7 +214,7 @@ public class VideoUtil {
         int frameCount = 0;
         while (true) {
             int flags = extractor.getSampleFlags();
-            if ((flags & MediaExtractor.SAMPLE_FLAG_SYNC) != 0) {
+            if (flags > 0 && (flags & MediaExtractor.SAMPLE_FLAG_SYNC) != 0) {
                 keyFrameCount++;
             }
             long sampleTime = extractor.getSampleTime();
@@ -225,7 +225,7 @@ public class VideoUtil {
             extractor.advance();
         }
         extractor.release();
-        float bitrateMultiple = (frameCount - keyFrameCount) / (float) keyFrameCount;
+        float bitrateMultiple = (frameCount - keyFrameCount) / (float) keyFrameCount + 1;
         MediaMetadataRetriever retriever = new MediaMetadataRetriever();
         retriever.setDataSource(input);
         int oriBitrate = Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_BITRATE));
