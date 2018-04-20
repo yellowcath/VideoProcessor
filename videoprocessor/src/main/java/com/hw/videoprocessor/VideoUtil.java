@@ -236,7 +236,7 @@ public class VideoUtil {
         return (int) (bitrateMultiple * oriBitrate);
     }
 
-    public static Pair<Integer,Integer> getVideoFrameCount(String input) throws IOException {
+    public static Pair<Integer, Integer> getVideoFrameCount(String input) throws IOException {
         MediaExtractor extractor = new MediaExtractor();
         extractor.setDataSource(input);
         int trackIndex = VideoUtil.selectTrack(extractor, false);
@@ -256,7 +256,7 @@ public class VideoUtil {
             extractor.advance();
         }
         extractor.release();
-        return new Pair<>(keyFrameCount,frameCount);
+        return new Pair<>(keyFrameCount, frameCount);
     }
 
     public static int getFrameRate(String videoPath) {
@@ -272,6 +272,27 @@ public class VideoUtil {
         } finally {
             extractor.release();
         }
+    }
+
+    public static float getAveFrameRate(String videoPath) throws IOException {
+        MediaExtractor extractor = new MediaExtractor();
+        extractor.setDataSource(videoPath);
+        int trackIndex = VideoUtil.selectTrack(extractor, false);
+        extractor.selectTrack(trackIndex);
+        long lastSampleTimeUs = 0;
+        int frameCount = 0;
+        while (true) {
+            long sampleTime = extractor.getSampleTime();
+            if (sampleTime < 0) {
+                break;
+            } else {
+                lastSampleTimeUs = sampleTime;
+            }
+            frameCount++;
+            extractor.advance();
+        }
+        extractor.release();
+        return frameCount / (lastSampleTimeUs / 1000f / 1000f);
     }
 
     public static void seekToLastFrame(MediaExtractor extractor, int trackIndex, int durationMs) {

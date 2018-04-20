@@ -607,7 +607,7 @@ public class VideoProcessor {
             oriExtrator.selectTrack(oriVideoIndex);
             oriExtrator.seekTo(startTimeUs, MediaExtractor.SEEK_TO_PREVIOUS_SYNC);
             maxBufferSize = oriVideoFormat.getInteger(MediaFormat.KEY_MAX_INPUT_SIZE);
-            int frameRate = oriVideoFormat.containsKey(MediaFormat.KEY_FRAME_RATE) ? oriVideoFormat.getInteger(MediaFormat.KEY_FRAME_RATE) : DEFAULT_FRAME_RATE;
+            int frameRate = oriVideoFormat.containsKey(MediaFormat.KEY_FRAME_RATE) ? oriVideoFormat.getInteger(MediaFormat.KEY_FRAME_RATE) : (int) Math.ceil(VideoUtil.getAveFrameRate(videoInput));
             buffer = ByteBuffer.allocateDirect(maxBufferSize);
             final int VIDEO_FRAME_TIME_US = (int) (1000 * 1000f / frameRate);
             long lastVideoFrameTimeUs = -1;

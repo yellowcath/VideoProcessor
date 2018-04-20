@@ -50,12 +50,14 @@ public class PreviewActivity extends AppCompatActivity {
             int width = format.getInteger(MediaFormat.KEY_WIDTH);
             int height = format.getInteger(MediaFormat.KEY_HEIGHT);
             int rotation = format.containsKey(MediaFormat.KEY_ROTATION) ? format.getInteger(MediaFormat.KEY_ROTATION) : -1;
-            videoInfo = String.format("size:%dX%d,framerate:%d,rotation:%d,bitrate:%d", width, height, frameRate, rotation, bitrate);
+            long duration = format.containsKey(MediaFormat.KEY_DURATION) ? format.getLong(MediaFormat.KEY_DURATION) : -1;
+            videoInfo = String.format("size:%dX%d,framerate:%d,rotation:%d,bitrate:%d,duration:%.1fs", width, height, frameRate, rotation, bitrate,
+                    duration / 1000f / 1000f);
             extractor.release();
         } catch (Exception e) {
             e.printStackTrace();
         }
-        tvInstruction.setText("Video stored at path " + filePath + "\n" +videoInfo);
+        tvInstruction.setText("Video stored at path " + filePath + "\n" + videoInfo);
         videoView.setVideoURI(Uri.parse(filePath));
         videoView.start();
 
