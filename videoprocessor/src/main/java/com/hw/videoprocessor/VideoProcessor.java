@@ -165,6 +165,8 @@ public class VideoProcessor {
 
         int resultWidth = outWidth == null ? originWidth : outWidth;
         int resultHeight = outHeight == null ? originHeight : outHeight;
+        resultWidth = resultWidth % 2 == 0 ? resultWidth : resultWidth + 1;
+        resultHeight = resultHeight % 2 == 0 ? resultHeight : resultHeight + 1;
 
         if (rotationValue == 90 || rotationValue == 270) {
             int temp = resultHeight;
