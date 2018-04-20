@@ -210,7 +210,11 @@ public class VideoProcessor {
         VideoEncodeThread encodeThread = new VideoEncodeThread(extractor, mediaMuxer, bitrate,
                 resultWidth, resultHeight, iFrameInterval, frameRate == null ? DEFAULT_FRAME_RATE : frameRate, videoIndex,
                 decodeDone, muxerStartLatch);
-        VideoDecodeThread decodeThread = new VideoDecodeThread(encodeThread, extractor, startTimeMs, endTimeMs,
+        int srcFrameRate = VideoUtil.getFrameRate(input);
+        if (srcFrameRate <= 0) {
+            srcFrameRate = (int) Math.ceil(VideoUtil.getAveFrameRate(input));
+        }
+        VideoDecodeThread decodeThread = new VideoDecodeThread(encodeThread, extractor, startTimeMs, endTimeMs, srcFrameRate,
                 frameRate == null ? DEFAULT_FRAME_RATE : frameRate, speed, videoIndex, decodeDone);
         AudioProcessThread audioProcessThread = new AudioProcessThread(context, input, mediaMuxer, startTimeMs, endTimeMs,
                 speed, muxerAudioTrackIndex, muxerStartLatch);

@@ -34,11 +34,12 @@ public class VideoDecodeThread extends Thread {
     private IVideoEncodeThread mVideoEncodeThread;
     private InputSurface mInputSurface;
     private OutputSurface mOutputSurface;
-    private Integer mFrameRate;
+    private Integer mDstFrameRate;
+    private Integer mSrcFrameRate;
 
     public VideoDecodeThread(IVideoEncodeThread videoEncodeThread, MediaExtractor extractor,
                              @Nullable Integer startTimeMs, @Nullable Integer endTimeMs,
-                             @Nullable Integer frameRate, @Nullable Float speed,
+                             @Nullable Integer srcFrameRate, @Nullable Integer dstFrameRate, @Nullable Float speed,
                              int videoIndex, AtomicBoolean decodeDone
 
     ) {
@@ -50,7 +51,8 @@ public class VideoDecodeThread extends Thread {
         mVideoIndex = videoIndex;
         mDecodeDone = decodeDone;
         mVideoEncodeThread = videoEncodeThread;
-        mFrameRate = frameRate;
+        mDstFrameRate = dstFrameRate;
+        mSrcFrameRate = srcFrameRate;
     }
 
     @Override
@@ -62,13 +64,13 @@ public class VideoDecodeThread extends Thread {
             mException = e;
             CL.e(e);
         } finally {
-            if(mInputSurface!=null) {
+            if (mInputSurface != null) {
                 mInputSurface.release();
             }
-            if(mOutputSurface!=null) {
+            if (mOutputSurface != null) {
                 mOutputSurface.release();
             }
-            if(mDecoder!=null) {
+            if (mDecoder != null) {
                 mDecoder.stop();
                 mDecoder.release();
             }
@@ -78,8 +80,8 @@ public class VideoDecodeThread extends Thread {
     private void doDecode() throws IOException {
         CountDownLatch eglContextLatch = mVideoEncodeThread.getEglContextLatch();
         try {
-            boolean await = eglContextLatch.await(3, TimeUnit.SECONDS);
-            if(!await){
+            boolean await = eglContextLatch.await(5, TimeUnit.SECONDS);
+            if (!await) {
                 mException = new TimeoutException("wait eglContext timeout!");
                 return;
             }
@@ -103,17 +105,16 @@ public class VideoDecodeThread extends Thread {
         int frameIntervalForDrop = 0;
         int dropCount = 0;
         int frameIndex = 1;
-        if (mFrameRate != null && VideoProcessor.DROP_FRAMES) {
-            int sourceFrameRate = inputFormat.containsKey(MediaFormat.KEY_FRAME_RATE) ? inputFormat.getInteger(MediaFormat.KEY_FRAME_RATE) : 0;
+        if (VideoProcessor.DROP_FRAMES && mSrcFrameRate != null && mDstFrameRate != null) {
             if (mSpeed != null) {
-                sourceFrameRate *= mSpeed;
+                mSrcFrameRate = (int) (mSrcFrameRate * mSpeed);
             }
-            if (sourceFrameRate != 0 && sourceFrameRate > mFrameRate) {
-                frameIntervalForDrop = mFrameRate / (sourceFrameRate - mFrameRate);
+            if (mSrcFrameRate > mDstFrameRate) {
+                frameIntervalForDrop = mDstFrameRate / (mSrcFrameRate - mDstFrameRate);
                 frameIntervalForDrop = frameIntervalForDrop == 0 ? 1 : frameIntervalForDrop;
-                dropCount = (sourceFrameRate - mFrameRate) / mFrameRate;
+                dropCount = (mSrcFrameRate - mDstFrameRate) / mDstFrameRate;
                 dropCount = dropCount == 0 ? 1 : dropCount;
-                CL.w("帧率过高，需要丢帧:" + sourceFrameRate + "->" + mFrameRate + " frameIntervalForDrop:" + frameIntervalForDrop + " dropCount:" + dropCount);
+                CL.w("帧率过高，需要丢帧:" + mSrcFrameRate + "->" + mDstFrameRate + " frameIntervalForDrop:" + frameIntervalForDrop + " dropCount:" + dropCount);
             }
         }
         //开始解码
