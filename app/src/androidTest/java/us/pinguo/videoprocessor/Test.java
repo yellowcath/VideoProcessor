@@ -3,9 +3,10 @@ package us.pinguo.videoprocessor;
 import android.content.Context;
 import android.support.test.InstrumentationRegistry;
 import android.support.test.runner.AndroidJUnit4;
-import android.util.Pair;
-import com.hw.videoprocessor.VideoUtil;
+import android.util.Log;
+import com.hw.videoprocessor.VideoProcessor;
 import com.hw.videoprocessor.util.CL;
+import com.hw.videoprocessor.util.VideoProgressListener;
 import org.junit.runner.RunWith;
 
 import java.io.File;
@@ -22,11 +23,23 @@ public class Test {
     public void test() throws Exception {
         CL.setLogEnable(true);
         Context context = InstrumentationRegistry.getTargetContext();
-        File dyFile = new File("/sdcard/dy.mp4");
-        File cFile = new File("/sdcard/c.mp4");
+        File file = new File("/storage/emulated/0/Tencent/QQfile_recv/VID_20180217_103218.mp4");
 
-        Pair<Integer, Integer> videoFrameCount = VideoUtil.getVideoFrameCount(dyFile.getAbsolutePath());
-        Pair<Integer, Integer> videoFrameCount1 = VideoUtil.getVideoFrameCount(cFile.getAbsolutePath());
+        VideoProcessor.processor(context)
+                .input(file.getAbsolutePath())
+                .output(context.getCacheDir() + "/" + "test.mp4")
+                .outWidth(1137)
+                .outHeight(640)
+                .bitrate(59166668)
+                .frameRate(15)
+                .iFrameInterval(0)
+                .progressListener(new VideoProgressListener() {
+                    @Override
+                    public void onProgress(float progress) {
+                        Log.e("hwLog", "progress:" + progress);
+                    }
+                })
+                .process();
         CL.setLogEnable(false);
     }
 }

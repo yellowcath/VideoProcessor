@@ -10,6 +10,8 @@ import com.hw.videoprocessor.util.VideoProgressAve;
 import com.hw.videoprocessor.util.VideoProgressListener;
 
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 /**
  * Created by huangwei on 2018/4/8 0008.
@@ -69,7 +71,10 @@ public class AudioProcessThread extends Thread implements VideoProgressListener 
             //音频暂不支持变速
             Integer startTimeUs = mStartTimeMs == null ? null : mStartTimeMs * 1000;
             Integer endTimeUs = mEndTimeMs == null ? null : mEndTimeMs * 1000;
-            mMuxerStartLatch.await();
+            boolean await = mMuxerStartLatch.await(3, TimeUnit.SECONDS);
+            if (!await) {
+                throw new TimeoutException("wait muxerStartLatch timeout!");
+            }
             if (mSpeed != null) {
                 AudioUtil.writeAudioTrackDecode(mContext, mExtractor, mMuxer, mMuxerAudioTrackIndex, startTimeUs, endTimeUs, mSpeed, this);
             } else {

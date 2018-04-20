@@ -12,6 +12,8 @@ import com.hw.videoprocessor.util.OutputSurface;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import static com.hw.videoprocessor.VideoProcessor.TIMEOUT_USEC;
@@ -60,19 +62,31 @@ public class VideoDecodeThread extends Thread {
             mException = e;
             CL.e(e);
         } finally {
-            mInputSurface.release();
-            mOutputSurface.release();
-            mDecoder.stop();
-            mDecoder.release();
+            if(mInputSurface!=null) {
+                mInputSurface.release();
+            }
+            if(mOutputSurface!=null) {
+                mOutputSurface.release();
+            }
+            if(mDecoder!=null) {
+                mDecoder.stop();
+                mDecoder.release();
+            }
         }
     }
 
     private void doDecode() throws IOException {
         CountDownLatch eglContextLatch = mVideoEncodeThread.getEglContextLatch();
         try {
-            eglContextLatch.await();
+            boolean await = eglContextLatch.await(3, TimeUnit.SECONDS);
+            if(!await){
+                mException = new TimeoutException("wait eglContext timeout!");
+                return;
+            }
         } catch (InterruptedException e) {
-            e.printStackTrace();
+            CL.e(e);
+            mException = e;
+            return;
         }
         Surface encodeSurface = mVideoEncodeThread.getSurface();
         mInputSurface = new InputSurface(encodeSurface);
