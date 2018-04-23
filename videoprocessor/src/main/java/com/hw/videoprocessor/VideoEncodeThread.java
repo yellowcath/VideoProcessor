@@ -88,10 +88,10 @@ public class VideoEncodeThread extends Thread implements IVideoEncodeThread {
         MediaFormat outputFormat = MediaFormat.createVideoFormat(MIME_TYPE, mResultWidth, mResultHeight);
         outputFormat.setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface);
         outputFormat.setInteger(MediaFormat.KEY_FRAME_RATE, frameRate);
-        outputFormat.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1);
+        outputFormat.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, mIFrameInterval);
 
         mEncoder = MediaCodec.createEncoderByType(MIME_TYPE);
-        boolean supportProfileHigh = VideoUtil.trySetProfileHigh(mEncoder, MIME_TYPE,outputFormat);
+        boolean supportProfileHigh = VideoUtil.trySetProfileHigh(mEncoder, MIME_TYPE, outputFormat);
         if (supportProfileHigh) {
             CL.i("supportProfileHigh,enable ProfileHigh");
         }
