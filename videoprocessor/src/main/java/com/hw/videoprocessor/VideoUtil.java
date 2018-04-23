@@ -1,6 +1,8 @@
 package com.hw.videoprocessor;
 
 import android.content.Context;
+import android.media.MediaCodec;
+import android.media.MediaCodecInfo;
 import android.media.MediaExtractor;
 import android.media.MediaFormat;
 import android.media.MediaMetadataRetriever;
@@ -304,6 +306,52 @@ public class VideoUtil {
         while (seekToDuration > 0 && extractor.getSampleTrackIndex() != trackIndex) {
             seekToDuration -= 10000;
             extractor.seekTo(seekToDuration, MediaExtractor.SEEK_TO_PREVIOUS_SYNC);
+        }
+    }
+
+    public static File getVideoCacheDir(Context context) {
+        File cacheDir = new File(context.getCacheDir(), "video/");
+        cacheDir.mkdirs();
+        return cacheDir;
+    }
+
+
+    public static boolean trySetProfileHigh(MediaCodec codec, String mime, MediaFormat format) {
+        MediaCodecInfo codecInfo = codec.getCodecInfo();
+        MediaCodecInfo.CodecCapabilities capabilities = codecInfo.getCapabilitiesForType(mime);
+        MediaCodecInfo.CodecProfileLevel[] profileLevels = capabilities.profileLevels;
+        if (profileLevels == null) {
+            return false;
+        }
+        MediaCodecInfo.CodecProfileLevel maxLevel = null;
+        for (MediaCodecInfo.CodecProfileLevel level : profileLevels) {
+            if (level.profile == MediaCodecInfo.CodecProfileLevel.AVCProfileHigh) {
+                if (level.level == MediaCodecInfo.CodecProfileLevel.AVCLevel31) {
+                    format.setInteger(MediaFormat.KEY_PROFILE, MediaCodecInfo.CodecProfileLevel.AVCProfileHigh);
+                    format.setInteger(MediaFormat.KEY_LEVEL, MediaCodecInfo.CodecProfileLevel.AVCLevel31);
+                    return true;
+                } else {
+                    maxLevel = maxLevel == null ? level : maxLevel;
+                    maxLevel = maxLevel.level > level.level ? maxLevel : level;
+                }
+            }
+        }
+        if (maxLevel != null) {
+            format.setInteger(MediaFormat.KEY_PROFILE, MediaCodecInfo.CodecProfileLevel.AVCProfileHigh);
+            format.setInteger(MediaFormat.KEY_LEVEL, maxLevel.level);
+        }
+        return false;
+    }
+
+    public static int getMaxSupportBitrate(MediaCodec codec, String mime) {
+        try {
+            MediaCodecInfo codecInfo = codec.getCodecInfo();
+            MediaCodecInfo.CodecCapabilities capabilities = codecInfo.getCapabilitiesForType(mime);
+            Integer maxBitrate = capabilities.getVideoCapabilities().getBitrateRange().getUpper();
+            return maxBitrate;
+        } catch (Exception e) {
+            CL.e(e);
+            return -1;
         }
     }
 }

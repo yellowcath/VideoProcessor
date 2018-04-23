@@ -87,11 +87,20 @@ public class VideoEncodeThread extends Thread implements IVideoEncodeThread {
         }
         MediaFormat outputFormat = MediaFormat.createVideoFormat(MIME_TYPE, mResultWidth, mResultHeight);
         outputFormat.setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface);
-        outputFormat.setInteger(MediaFormat.KEY_BIT_RATE, mBitrate);
         outputFormat.setInteger(MediaFormat.KEY_FRAME_RATE, frameRate);
-        outputFormat.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, mIFrameInterval);
+        outputFormat.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1);
 
         mEncoder = MediaCodec.createEncoderByType(MIME_TYPE);
+        boolean supportProfileHigh = VideoUtil.trySetProfileHigh(mEncoder, MIME_TYPE,outputFormat);
+        if (supportProfileHigh) {
+            CL.i("supportProfileHigh,enable ProfileHigh");
+        }
+        int maxBitrate = VideoUtil.getMaxSupportBitrate(mEncoder, MIME_TYPE);
+        if (maxBitrate > 0 && mBitrate > maxBitrate) {
+            mBitrate = maxBitrate;
+            CL.e(mBitrate + " bitrate too large,set to:" + maxBitrate);
+        }
+        outputFormat.setInteger(MediaFormat.KEY_BIT_RATE, mBitrate);
         mEncoder.configure(outputFormat, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE);
         mSurface = mEncoder.createInputSurface();
 
@@ -158,7 +167,7 @@ public class VideoEncodeThread extends Thread implements IVideoEncodeThread {
         if (mProgressAve == null) {
             return;
         }
-        mProgressAve.setEncodeTimeStamp((info.flags & MediaCodec.BUFFER_FLAG_END_OF_STREAM)>0 ? Long.MAX_VALUE : info.presentationTimeUs);
+        mProgressAve.setEncodeTimeStamp((info.flags & MediaCodec.BUFFER_FLAG_END_OF_STREAM) > 0 ? Long.MAX_VALUE : info.presentationTimeUs);
     }
 
     @Override
