@@ -634,7 +634,7 @@ public class VideoProcessor {
                 if (info.size < 0) {
                     break;
                 }
-//                //写入视频
+                //写入视频
                 if (!detectTimeError && lastVideoFrameTimeUs != -1 && info.presentationTimeUs < lastVideoFrameTimeUs + VIDEO_FRAME_TIME_US) {
                     //某些视频帧时间会出错
                     CL.et(TAG, "video 时间戳错误，lastVideoFrameTimeUs:" + lastVideoFrameTimeUs + " " +

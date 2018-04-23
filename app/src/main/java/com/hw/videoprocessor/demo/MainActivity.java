@@ -333,7 +333,7 @@ public class MainActivity extends AppCompatActivity {
         File moviesDir = Environment.getExternalStoragePublicDirectory(
                 Environment.DIRECTORY_MOVIES
         );
-
+        moviesDir.mkdirs();
         String filePrefix = "cut_video";
         String fileExtn = ".mp4";
         final String selectVideoPath = getPath(MainActivity.this, selectedVideoUri);
@@ -369,6 +369,7 @@ public class MainActivity extends AppCompatActivity {
         File moviesDir = Environment.getExternalStoragePublicDirectory(
                 Environment.DIRECTORY_MOVIES
         );
+        moviesDir.mkdirs();
         progressDialog.show();
         String filePrefix = "scale_video";
         String fileExtn = ".mp4";
@@ -421,6 +422,7 @@ public class MainActivity extends AppCompatActivity {
         File moviesDir = Environment.getExternalStoragePublicDirectory(
                 Environment.DIRECTORY_MOVIES
         );
+        moviesDir.mkdirs();
         progressDialog.show();
         String filePrefix = "scale_video";
         String fileExtn = ".mp4";
@@ -457,6 +459,7 @@ public class MainActivity extends AppCompatActivity {
         File moviesDir = Environment.getExternalStoragePublicDirectory(
                 Environment.DIRECTORY_MOVIES
         );
+        moviesDir.mkdirs();
         progressDialog.show();
         String filePrefix = "kichiku_video";
         String fileExtn = ".mp4";
@@ -493,6 +496,7 @@ public class MainActivity extends AppCompatActivity {
         File moviesDir = Environment.getExternalStoragePublicDirectory(
                 Environment.DIRECTORY_MOVIES
         );
+        moviesDir.mkdirs();
         progressDialog.show();
         String filePrefix = "speed_video";
         String fileExtn = ".mp4";
@@ -538,6 +542,7 @@ public class MainActivity extends AppCompatActivity {
         File moviesDir = Environment.getExternalStoragePublicDirectory(
                 Environment.DIRECTORY_MOVIES
         );
+        moviesDir.mkdirs();
         progressDialog.show();
         String filePrefix = "revert_video";
         String fileExtn = ".mp4";

@@ -113,6 +113,9 @@ public class VideoEncodeThread extends Thread implements IVideoEncodeThread {
         MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
         int encodeTryAgainCount = 0;
         int videoTrackIndex = -5;
+        boolean detectTimeError = false;
+        final int VIDEO_FRAME_TIME_US = (int) (1000 * 1000f / frameRate);
+        long lastVideoFrameTimeUs = -1;
         //开始编码
         //输出
         while (true) {
@@ -148,10 +151,25 @@ public class VideoEncodeThread extends Thread implements IVideoEncodeThread {
             } else {
                 //编码数据可用
                 ByteBuffer outputBuffer = mEncoder.getOutputBuffer(outputBufferIndex);
-                CL.i("writeSampleData,size:" + info.size + " time:" + info.presentationTimeUs / 1000);
                 if (info.flags == MediaCodec.BUFFER_FLAG_END_OF_STREAM && info.presentationTimeUs < 0) {
                     info.presentationTimeUs = 0;
                 }
+                //写入视频
+                if (!detectTimeError && lastVideoFrameTimeUs != -1 && info.presentationTimeUs < lastVideoFrameTimeUs + VIDEO_FRAME_TIME_US) {
+                    //某些视频帧时间会出错
+                    CL.e("video 时间戳错误，lastVideoFrameTimeUs:" + lastVideoFrameTimeUs + " " +
+                            "info.presentationTimeUs:" + info.presentationTimeUs + " VIDEO_FRAME_TIME_US:" + VIDEO_FRAME_TIME_US);
+                    detectTimeError = true;
+                }
+                if (detectTimeError) {
+                    info.presentationTimeUs = lastVideoFrameTimeUs + VIDEO_FRAME_TIME_US;
+                    CL.e("video 时间戳错误，使用修正的时间戳:" + info.presentationTimeUs);
+                    detectTimeError = false;
+                }
+                if (info.flags != MediaCodec.BUFFER_FLAG_CODEC_CONFIG) {
+                    lastVideoFrameTimeUs = info.presentationTimeUs;
+                }
+                CL.i("writeSampleData,size:" + info.size + " time:" + info.presentationTimeUs / 1000);
                 mMuxer.writeSampleData(videoTrackIndex, outputBuffer, info);
                 notifyProgress(info);
                 mEncoder.releaseOutputBuffer(outputBufferIndex, false);
