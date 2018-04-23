@@ -106,22 +106,22 @@ public class VideoProcessor {
                 extractor.advance();
             }
             extractor.release();
-            if (frameCount == keyFrameCount) {
+            if (frameCount == keyFrameCount || frameCount == keyFrameCount + 1) {
                 reverseVideoNoDecode(input, output, listener);
             } else {
                 VideoMultiStepProgress stepProgress = new VideoMultiStepProgress(new float[]{0.45f, 0.1f, 0.45f}, listener);
                 stepProgress.setCurrentStep(0);
-                int bitrateMultiple = (frameCount - keyFrameCount) / keyFrameCount;
+                float bitrateMultiple = (frameCount - keyFrameCount) / (float) keyFrameCount + 1;
                 MediaMetadataRetriever retriever = new MediaMetadataRetriever();
                 retriever.setDataSource(input);
                 int oriBitrate = Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_BITRATE));
                 int duration = Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION));
                 try {
-                    processVideo(context, input, tempFile.getAbsolutePath(), null, null, null, null, null, oriBitrate * bitrateMultiple, null, 0, stepProgress);
+                    processVideo(context, input, tempFile.getAbsolutePath(), null, null, null, null, null, (int) (oriBitrate * bitrateMultiple), null, 0, stepProgress);
                 } catch (MediaCodec.CodecException e) {
                     CL.e(e);
                     /** Nexus5上-1代表全关键帧*/
-                    processVideo(context, input, tempFile.getAbsolutePath(), null, null, null, null, null, oriBitrate * bitrateMultiple, null, -1, stepProgress);
+                    processVideo(context, input, tempFile.getAbsolutePath(), null, null, null, null, null, (int) (oriBitrate * bitrateMultiple), null, -1, stepProgress);
                 }
                 stepProgress.setCurrentStep(1);
                 reverseVideoNoDecode(tempFile.getAbsolutePath(), temp2File.getAbsolutePath(), stepProgress);
