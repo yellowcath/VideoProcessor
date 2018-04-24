@@ -316,29 +316,21 @@ public class VideoUtil {
     }
 
 
-    public static boolean trySetProfileHigh(MediaCodec codec, String mime, MediaFormat format) {
+    public static boolean trySetProfileAndLevel(MediaCodec codec, String mime, MediaFormat format,int profileInt,int levelInt) {
         MediaCodecInfo codecInfo = codec.getCodecInfo();
         MediaCodecInfo.CodecCapabilities capabilities = codecInfo.getCapabilitiesForType(mime);
         MediaCodecInfo.CodecProfileLevel[] profileLevels = capabilities.profileLevels;
         if (profileLevels == null) {
             return false;
         }
-        MediaCodecInfo.CodecProfileLevel maxLevel = null;
         for (MediaCodecInfo.CodecProfileLevel level : profileLevels) {
-            if (level.profile == MediaCodecInfo.CodecProfileLevel.AVCProfileHigh) {
-                if (level.level == MediaCodecInfo.CodecProfileLevel.AVCLevel31) {
-                    format.setInteger(MediaFormat.KEY_PROFILE, MediaCodecInfo.CodecProfileLevel.AVCProfileHigh);
-                    format.setInteger(MediaFormat.KEY_LEVEL, MediaCodecInfo.CodecProfileLevel.AVCLevel31);
+            if (level.profile == profileInt) {
+                if (level.level == levelInt) {
+                    format.setInteger(MediaFormat.KEY_PROFILE, profileInt);
+                    format.setInteger(MediaFormat.KEY_LEVEL, levelInt);
                     return true;
-                } else {
-                    maxLevel = maxLevel == null ? level : maxLevel;
-                    maxLevel = maxLevel.level > level.level ? maxLevel : level;
                 }
             }
-        }
-        if (maxLevel != null) {
-            format.setInteger(MediaFormat.KEY_PROFILE, MediaCodecInfo.CodecProfileLevel.AVCProfileHigh);
-            format.setInteger(MediaFormat.KEY_LEVEL, maxLevel.level);
         }
         return false;
     }
