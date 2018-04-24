@@ -2,7 +2,9 @@ package us.pinguo.videoprocessor;
 
 import android.media.MediaExtractor;
 import android.media.MediaFormat;
+import android.support.test.InstrumentationRegistry;
 import android.support.test.runner.AndroidJUnit4;
+import com.hw.videoprocessor.VideoProcessor;
 import com.hw.videoprocessor.VideoUtil;
 import com.hw.videoprocessor.util.AudioUtil;
 import org.junit.Test;
@@ -23,10 +25,10 @@ import java.nio.channels.FileChannel;
 public class AacTest {
     @Test
     public void test() throws Exception {
-        File videoFile = new File("/mnt/sdcard/Movies/scale_video14.mp4");
-        File pcmFile = new File("/mnt/sdcard/14.pcm.mp4");
-        AudioUtil.decodeToPCM(videoFile.getAbsolutePath(), pcmFile.getAbsolutePath(), null, null);
-//        AudioUtil.copyFile(pcmFile.getAbsolutePath(), "/mnt/sdcard/t2.pcm");
+        File videoFile = new File("/mnt/sdcard/DCIM/Camera/C360VID_20180424_094256.mp4");
+        File outFile = new File("/mnt/sdcard/test.mp4");
+        VideoProcessor.adjustVideoVolume(InstrumentationRegistry.getTargetContext(), videoFile.getAbsolutePath(),
+                outFile.getAbsolutePath(), 2);
     }
 
     //    @Test
