@@ -124,7 +124,7 @@ public class VideoUtil {
             //反序当前片段
             long s1 = System.currentTimeMillis();
             String out = inputVideos.get(i).getAbsolutePath() + ".rev";
-            VideoProcessor.reverseVideoNoDecode(inputVideos.get(i).getAbsolutePath(), out);
+            VideoProcessor.reverseVideoNoDecode(inputVideos.get(i).getAbsolutePath(), out, true);
             long e1 = System.currentTimeMillis();
             CL.e("reverseVideoNoDecode:" + (e1 - s1) + "ms");
             //合并反序片段

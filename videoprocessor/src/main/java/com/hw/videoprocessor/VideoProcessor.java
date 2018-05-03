@@ -83,7 +83,7 @@ public class VideoProcessor {
     /**
      * 对视频先检查，如果不是全关键帧，先处理成所有帧都是关键帧，再逆序
      */
-    public static void reverseVideo(Context context, String input, String output, @Nullable VideoProgressListener listener) throws Exception {
+    public static void reverseVideo(Context context, String input, String output, boolean reverseAudio, @Nullable VideoProgressListener listener) throws Exception {
         File tempFile = new File(context.getCacheDir(), System.currentTimeMillis() + ".temp");
         File temp2File = new File(context.getCacheDir(), System.currentTimeMillis() + ".temp2");
         try {
@@ -107,7 +107,7 @@ public class VideoProcessor {
             }
             extractor.release();
             if (frameCount == keyFrameCount || frameCount == keyFrameCount + 1) {
-                reverseVideoNoDecode(input, output, listener);
+                reverseVideoNoDecode(input, output, reverseAudio, listener);
             } else {
                 VideoMultiStepProgress stepProgress = new VideoMultiStepProgress(new float[]{0.45f, 0.1f, 0.45f}, listener);
                 stepProgress.setCurrentStep(0);
@@ -136,7 +136,7 @@ public class VideoProcessor {
                             .process();
                 }
                 stepProgress.setCurrentStep(1);
-                reverseVideoNoDecode(tempFile.getAbsolutePath(), temp2File.getAbsolutePath(), stepProgress);
+                reverseVideoNoDecode(tempFile.getAbsolutePath(), temp2File.getAbsolutePath(), reverseAudio, stepProgress);
                 int oriIFrameInterval = (int) (keyFrameCount / (duration / 1000f));
                 oriIFrameInterval = oriIFrameInterval == 0 ? 1 : oriIFrameInterval;
                 stepProgress.setCurrentStep(2);
@@ -226,7 +226,7 @@ public class VideoProcessor {
                     }
                     long avDurationUs = videoDurationUs < audioDurationUs ? videoDurationUs : audioDurationUs;
                     audioTrackFormat.setLong(MediaFormat.KEY_DURATION, avDurationUs);
-                    audioEndTimeMs = (startTimeMs == null ? 0 : startTimeMs) + (int) (avDurationUs/1000);
+                    audioEndTimeMs = (startTimeMs == null ? 0 : startTimeMs) + (int) (avDurationUs / 1000);
                 }
             }
             muxerAudioTrackIndex = mediaMuxer.addTrack(audioTrackFormat);
@@ -288,14 +288,14 @@ public class VideoProcessor {
         }
     }
 
-    public static void reverseVideoNoDecode(String input, String output) throws IOException {
-        reverseVideoNoDecode(input, output, null);
+    public static void reverseVideoNoDecode(String input, String output, boolean reverseAudio) throws IOException {
+        reverseVideoNoDecode(input, output, reverseAudio, null);
     }
 
     /**
      * 直接对视频进行逆序,用于所有帧都是关键帧的情况
      */
-    public static void reverseVideoNoDecode(String input, String output, @Nullable VideoProgressListener listener) throws IOException {
+    public static void reverseVideoNoDecode(String input, String output, boolean reverseAudio, @Nullable VideoProgressListener listener) throws IOException {
         MediaMetadataRetriever retriever = new MediaMetadataRetriever();
         retriever.setDataSource(input);
         int durationMs = Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION));
@@ -358,31 +358,55 @@ public class VideoProcessor {
             if (audioExist) {
                 extractor.unselectTrack(videoTrackIndex);
                 extractor.selectTrack(audioTrackIndex);
-                VideoUtil.seekToLastFrame(extractor, audioTrackIndex, durationMs);
-                lastFrameTimeUs = -1;
-                while (true) {
-                    long sampleTime = extractor.getSampleTime();
-                    if (lastFrameTimeUs == -1) {
-                        lastFrameTimeUs = sampleTime;
+                if (reverseAudio) {
+                    VideoUtil.seekToLastFrame(extractor, audioTrackIndex, durationMs);
+                    lastFrameTimeUs = -1;
+                    while (true) {
+                        long sampleTime = extractor.getSampleTime();
+                        if (lastFrameTimeUs == -1) {
+                            lastFrameTimeUs = sampleTime;
+                        }
+                        info.presentationTimeUs = lastFrameTimeUs - sampleTime;
+                        info.size = extractor.readSampleData(buffer, 0);
+                        info.flags = extractor.getSampleFlags();
+                        if (info.size < 0) {
+                            break;
+                        }
+                        mediaMuxer.writeSampleData(audioMuxerTrackIndex, buffer, info);
+                        if (listener != null) {
+                            float audioProgress = info.presentationTimeUs / (float) audioDurationUs;
+                            audioProgress = audioProgress > 1 ? 1 : audioProgress;
+                            audioProgress = 0.7f + audioProgress * 0.3f;
+                            listener.onProgress(audioProgress);
+                        }
+                        long seekTime = sampleTime - MIN_FRAME_INTERVAL;
+                        if (seekTime <= 0) {
+                            break;
+                        }
+                        extractor.seekTo(seekTime, MediaExtractor.SEEK_TO_PREVIOUS_SYNC);
                     }
-                    info.presentationTimeUs = lastFrameTimeUs - sampleTime;
-                    info.size = extractor.readSampleData(buffer, 0);
-                    info.flags = extractor.getSampleFlags();
-                    if (info.size < 0) {
-                        break;
+                } else {
+                    extractor.seekTo(0, MediaExtractor.SEEK_TO_CLOSEST_SYNC);
+                    while (true) {
+                        long sampleTime = extractor.getSampleTime();
+                        if (sampleTime == -1) {
+                            break;
+                        }
+                        info.presentationTimeUs = sampleTime;
+                        info.size = extractor.readSampleData(buffer, 0);
+                        info.flags = extractor.getSampleFlags();
+                        if (info.size < 0) {
+                            break;
+                        }
+                        mediaMuxer.writeSampleData(audioMuxerTrackIndex, buffer, info);
+                        if (listener != null) {
+                            float audioProgress = info.presentationTimeUs / (float) audioDurationUs;
+                            audioProgress = audioProgress > 1 ? 1 : audioProgress;
+                            audioProgress = 0.7f + audioProgress * 0.3f;
+                            listener.onProgress(audioProgress);
+                        }
+                        extractor.advance();
                     }
-                    mediaMuxer.writeSampleData(audioMuxerTrackIndex, buffer, info);
-                    if (listener != null) {
-                        float audioProgress = info.presentationTimeUs / (float) audioDurationUs;
-                        audioProgress = audioProgress > 1 ? 1 : audioProgress;
-                        audioProgress = 0.7f + audioProgress * 0.3f;
-                        listener.onProgress(audioProgress);
-                    }
-                    long seekTime = sampleTime - MIN_FRAME_INTERVAL;
-                    if (seekTime <= 0) {
-                        break;
-                    }
-                    extractor.seekTo(seekTime, MediaExtractor.SEEK_TO_PREVIOUS_SYNC);
                 }
             }
             if (listener != null) {
