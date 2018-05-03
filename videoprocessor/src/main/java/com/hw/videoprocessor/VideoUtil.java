@@ -56,8 +56,15 @@ public class VideoUtil {
         List<File> fileList = new ArrayList<>(sliceList.size());
         for (Pair<Integer, Integer> pair : sliceList) {
             File file = new File(outputDir, pair.first + ".mp4");
-            VideoProcessor.processVideo(context, inputVideo, file.getAbsolutePath(), null, null, pair.first,
-                    pair.second, speed, bitrate, null, iFrameInterval, null);
+            VideoProcessor.processor(context)
+                    .input(inputVideo)
+                    .output(file.getAbsolutePath())
+                    .startTimeMs(pair.first)
+                    .endTimeMs(pair.second)
+                    .speed(speed)
+                    .bitrate(bitrate)
+                    .iFrameInterval(iFrameInterval)
+                    .process();
             fileList.add(file);
         }
         return fileList;
@@ -316,7 +323,7 @@ public class VideoUtil {
     }
 
 
-    public static boolean trySetProfileAndLevel(MediaCodec codec, String mime, MediaFormat format,int profileInt,int levelInt) {
+    public static boolean trySetProfileAndLevel(MediaCodec codec, String mime, MediaFormat format, int profileInt, int levelInt) {
         MediaCodecInfo codecInfo = codec.getCodecInfo();
         MediaCodecInfo.CodecCapabilities capabilities = codecInfo.getCapabilitiesForType(mime);
         MediaCodecInfo.CodecProfileLevel[] profileLevels = capabilities.profileLevels;

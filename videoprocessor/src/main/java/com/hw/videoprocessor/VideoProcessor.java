@@ -117,18 +117,36 @@ public class VideoProcessor {
                 int oriBitrate = Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_BITRATE));
                 int duration = Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION));
                 try {
-                    processVideo(context, input, tempFile.getAbsolutePath(), null, null, null, null, null, (int) (oriBitrate * bitrateMultiple), null, 0, stepProgress);
+                    processor(context)
+                            .input(input)
+                            .output(tempFile.getAbsolutePath())
+                            .bitrate((int) (oriBitrate * bitrateMultiple))
+                            .iFrameInterval(0)
+                            .progressListener(stepProgress)
+                            .process();
                 } catch (MediaCodec.CodecException e) {
                     CL.e(e);
                     /** Nexus5上-1代表全关键帧*/
-                    processVideo(context, input, tempFile.getAbsolutePath(), null, null, null, null, null, (int) (oriBitrate * bitrateMultiple), null, -1, stepProgress);
+                    processor(context)
+                            .input(input)
+                            .output(tempFile.getAbsolutePath())
+                            .bitrate((int) (oriBitrate * bitrateMultiple))
+                            .iFrameInterval(-1)
+                            .progressListener(stepProgress)
+                            .process();
                 }
                 stepProgress.setCurrentStep(1);
                 reverseVideoNoDecode(tempFile.getAbsolutePath(), temp2File.getAbsolutePath(), stepProgress);
                 int oriIFrameInterval = (int) (keyFrameCount / (duration / 1000f));
                 oriIFrameInterval = oriIFrameInterval == 0 ? 1 : oriIFrameInterval;
                 stepProgress.setCurrentStep(2);
-                processVideo(context, temp2File.getAbsolutePath(), output, null, null, null, null, null, oriBitrate, null, oriIFrameInterval, stepProgress);
+                processor(context)
+                        .input(temp2File.getAbsolutePath())
+                        .output(output)
+                        .bitrate(oriBitrate)
+                        .iFrameInterval(oriIFrameInterval)
+                        .progressListener(stepProgress)
+                        .process();
             }
         } finally {
             tempFile.delete();
@@ -144,7 +162,7 @@ public class VideoProcessor {
     public static void processVideo(Context context, String input, String output,
                                     @Nullable Integer outWidth, @Nullable Integer outHeight,
                                     @Nullable Integer startTimeMs, @Nullable Integer endTimeMs,
-                                    @Nullable Float speed, @Nullable Integer bitrate,
+                                    @Nullable Float speed, @Nullable Boolean changeAudioSpeed, @Nullable Integer bitrate,
                                     @Nullable Integer frameRate, @Nullable Integer iFrameInterval,
                                     @Nullable VideoProgressListener listener) throws Exception {
 
@@ -154,7 +172,7 @@ public class VideoProcessor {
         int originHeight = Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT));
         int rotationValue = Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION));
         int oriBitrate = Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_BITRATE));
-        int duration = Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION));
+        int durationMs = Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION));
         retriever.release();
         if (bitrate == null) {
             bitrate = oriBitrate;
@@ -180,17 +198,36 @@ public class VideoProcessor {
         int audioIndex = VideoUtil.selectTrack(extractor, true);
         MediaMuxer mediaMuxer = new MediaMuxer(output, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4);
         int muxerAudioTrackIndex = 0;
+        boolean shouldChangeAudioSpeed = changeAudioSpeed == null ? true : changeAudioSpeed;
+        Integer audioEndTimeMs = endTimeMs;
         if (audioIndex >= 0) {
             MediaFormat audioTrackFormat = extractor.getTrackFormat(audioIndex);
-            if (startTimeMs != null || endTimeMs != null || speed != null) {
-                long durationUs = audioTrackFormat.getLong(MediaFormat.KEY_DURATION);
-                if (startTimeMs != null && endTimeMs != null) {
-                    durationUs = (endTimeMs - startTimeMs) * 1000;
+            if (shouldChangeAudioSpeed) {
+                if (startTimeMs != null || endTimeMs != null || speed != null) {
+                    long durationUs = audioTrackFormat.getLong(MediaFormat.KEY_DURATION);
+                    if (startTimeMs != null && endTimeMs != null) {
+                        durationUs = (endTimeMs - startTimeMs) * 1000;
+                    }
+                    if (speed != null) {
+                        durationUs /= speed;
+                    }
+                    audioTrackFormat.setLong(MediaFormat.KEY_DURATION, durationUs);
                 }
-                if (speed != null) {
-                    durationUs /= speed;
+            } else {
+                long videoDurationUs = durationMs * 1000;
+                long audioDurationUs = audioTrackFormat.getLong(MediaFormat.KEY_DURATION);
+
+                if (startTimeMs != null || endTimeMs != null || speed != null) {
+                    if (startTimeMs != null && endTimeMs != null) {
+                        videoDurationUs = (endTimeMs - startTimeMs) * 1000;
+                    }
+                    if (speed != null) {
+                        videoDurationUs /= speed;
+                    }
+                    long avDurationUs = videoDurationUs < audioDurationUs ? videoDurationUs : audioDurationUs;
+                    audioTrackFormat.setLong(MediaFormat.KEY_DURATION, avDurationUs);
+                    audioEndTimeMs = (startTimeMs == null ? 0 : startTimeMs) + (int) (avDurationUs/1000);
                 }
-                audioTrackFormat.setLong(MediaFormat.KEY_DURATION, durationUs);
             }
             muxerAudioTrackIndex = mediaMuxer.addTrack(audioTrackFormat);
         }
@@ -204,7 +241,7 @@ public class VideoProcessor {
         VideoProgressAve progressAve = new VideoProgressAve(listener);
         progressAve.setSpeed(speed);
         progressAve.setStartTimeMs(startTimeMs == null ? 0 : startTimeMs);
-        progressAve.setEndTimeMs(endTimeMs == null ? duration : endTimeMs);
+        progressAve.setEndTimeMs(endTimeMs == null ? durationMs : endTimeMs);
         AtomicBoolean decodeDone = new AtomicBoolean(false);
         CountDownLatch muxerStartLatch = new CountDownLatch(1);
         VideoEncodeThread encodeThread = new VideoEncodeThread(extractor, mediaMuxer, bitrate,
@@ -216,8 +253,9 @@ public class VideoProcessor {
         }
         VideoDecodeThread decodeThread = new VideoDecodeThread(encodeThread, extractor, startTimeMs, endTimeMs, srcFrameRate,
                 frameRate == null ? DEFAULT_FRAME_RATE : frameRate, speed, videoIndex, decodeDone);
-        AudioProcessThread audioProcessThread = new AudioProcessThread(context, input, mediaMuxer, startTimeMs, endTimeMs,
-                speed, muxerAudioTrackIndex, muxerStartLatch);
+
+        AudioProcessThread audioProcessThread = new AudioProcessThread(context, input, mediaMuxer, startTimeMs, audioEndTimeMs,
+                shouldChangeAudioSpeed ? speed : null, muxerAudioTrackIndex, muxerStartLatch);
         encodeThread.setProgressAve(progressAve);
         audioProcessThread.setProgressAve(progressAve);
         decodeThread.start();
@@ -374,7 +412,7 @@ public class VideoProcessor {
         MediaExtractor oriExtrator = new MediaExtractor();
         oriExtrator.setDataSource(videoInput);
         int oriAudioIndex = VideoUtil.selectTrack(oriExtrator, true);
-        if(oriAudioIndex<0){
+        if (oriAudioIndex < 0) {
             CL.e("no audio stream!");
             AudioUtil.copyFile(videoInput, output);
             return;
@@ -384,8 +422,8 @@ public class VideoProcessor {
         final File videoPcmAdjustedFile = new File(cacheDir, "video_" + time + "_adjust.pcm");
         final File videoWavFile = new File(cacheDir, "video_" + time + ".wav");
 
-        AudioUtil.decodeToPCM(videoInput,videoPcmFile.getAbsolutePath(),null,null);
-        AudioUtil.adjustPcmVolume(videoPcmFile.getAbsolutePath(),videoPcmAdjustedFile.getAbsolutePath(),videoVolume);
+        AudioUtil.decodeToPCM(videoInput, videoPcmFile.getAbsolutePath(), null, null);
+        AudioUtil.adjustPcmVolume(videoPcmFile.getAbsolutePath(), videoPcmAdjustedFile.getAbsolutePath(), videoVolume);
 
         MediaFormat audioTrackFormat = oriExtrator.getTrackFormat(oriAudioIndex);
         int sampleRate = audioTrackFormat.getInteger(MediaFormat.KEY_SAMPLE_RATE);
@@ -884,6 +922,8 @@ public class VideoProcessor {
         @Nullable
         private Float speed;
         @Nullable
+        private Boolean changeAudioSpeed;
+        @Nullable
         private Integer bitrate;
         @Nullable
         private Integer frameRate;
@@ -931,6 +971,11 @@ public class VideoProcessor {
             return this;
         }
 
+        public Processor changeAudioSpeed(boolean changeAudioSpeed) {
+            this.changeAudioSpeed = changeAudioSpeed;
+            return this;
+        }
+
         public Processor bitrate(int bitrate) {
             this.bitrate = bitrate;
             return this;
@@ -952,7 +997,7 @@ public class VideoProcessor {
         }
 
         public void process() throws Exception {
-            processVideo(context, input, output, outWidth, outHeight, startTimeMs, endTimeMs, speed, bitrate, frameRate, iFrameInterval, listener);
+            processVideo(context, input, output, outWidth, outHeight, startTimeMs, endTimeMs, speed, changeAudioSpeed, bitrate, frameRate, iFrameInterval, listener);
         }
     }
 }

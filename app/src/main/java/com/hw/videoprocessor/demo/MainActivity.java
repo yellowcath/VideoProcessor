@@ -523,6 +523,7 @@ public class MainActivity extends AppCompatActivity {
                             .startTimeMs(startMs)
                             .endTimeMs(endMs)
                             .speed(speed)
+                            .changeAudioSpeed(true)
                             .process();
                     long e = System.currentTimeMillis();
                     CL.w("减速已完成，耗时:" + (e - s) / 1000f + "s");
