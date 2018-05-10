@@ -1,7 +1,9 @@
 package us.pinguo.videoprocessor;
 
+import android.content.Context;
 import android.media.MediaExtractor;
 import android.media.MediaFormat;
+import android.support.test.InstrumentationRegistry;
 import android.support.test.runner.AndroidJUnit4;
 import android.util.Log;
 import com.hw.videoprocessor.VideoUtil;
@@ -15,6 +17,8 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.channels.FileChannel;
 
+import static com.hw.videoprocessor.util.AudioUtil.adjustAacVolume;
+
 /**
  * Instrumented test, which will execute on an Android device.
  *
@@ -22,17 +26,35 @@ import java.nio.channels.FileChannel;
  */
 @RunWith(AndroidJUnit4.class)
 public class AacTest {
+//    @Test
+//    public void test() throws Exception {
+//        File videoFile = new File("/mnt/sdcard/DCIM/Camera/C360VID_20180420_151736.mp4");
+//        File aacFile = new File("/mnt/sdcard/test_short.aac");
+//        File outFile = new File("/mnt/sdcard/test.mp4");
+//        outFile.delete();
+//        long s = System.currentTimeMillis();
+//        AudioUtil.replaceAudioTrack(videoFile.getAbsolutePath(), aacFile.getAbsolutePath(), outFile.getAbsolutePath(),true);
+//        long e = System.currentTimeMillis();
+//        Log.e("hwLog","time:"+(e-s)+"ms");
+//    }
+
     @Test
-    public void test() throws Exception {
+    public void test2() throws Exception {
+        Context context = InstrumentationRegistry.getTargetContext();
         File videoFile = new File("/mnt/sdcard/DCIM/Camera/C360VID_20180420_151736.mp4");
-        File aacFile = new File("/mnt/sdcard/test.aac");
+        File aacFile = new File("/mnt/sdcard/test_short.aac");
+        File aacFile2 = new File("/mnt/sdcard/test2.aac");
         File outFile = new File("/mnt/sdcard/test.mp4");
         outFile.delete();
+
         long s = System.currentTimeMillis();
-        AudioUtil.replaceAudioTrack(videoFile.getAbsolutePath(), aacFile.getAbsolutePath(), outFile.getAbsolutePath());
+        adjustAacVolume(context, aacFile.getAbsolutePath(), aacFile2.getAbsolutePath(), 5, progress -> Log.e("hwLog", "progress:" + progress));
+        AudioUtil.replaceAudioTrack(videoFile.getAbsolutePath(), aacFile2.getAbsolutePath(), outFile.getAbsolutePath(), true);
         long e = System.currentTimeMillis();
-        Log.e("hwLog","time:"+(e-s)+"ms");
+        Log.e("hwLog", "time:" + (e - s) + "ms");
     }
+
+
 
     //    @Test
     public void testResample() throws Exception {

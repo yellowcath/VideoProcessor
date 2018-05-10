@@ -66,6 +66,33 @@ public class AudioUtil {
     }
 
     /**
+     * 调整aac音量
+     * @throws IOException
+     */
+    public static void adjustAacVolume(Context context, String aacPath, String outPath, @IntRange(from = 0, to = 100) int volume
+            , @Nullable VideoProgressListener listener) throws IOException {
+        String name = new File(aacPath).getName();
+        File pcmFile = new File(VideoUtil.getVideoCacheDir(context), name + ".pcm");
+        File pcmFile2 = new File(VideoUtil.getVideoCacheDir(context), name + "_2.pcm");
+        File wavFile = new File(VideoUtil.getVideoCacheDir(context), name + ".wav");
+
+        AudioUtil.decodeToPCM(aacPath, pcmFile.getAbsolutePath(), null, null);
+        AudioUtil.adjustPcmVolume(pcmFile.getAbsolutePath(), pcmFile2.getAbsolutePath(), volume);
+        MediaExtractor extractor = new MediaExtractor();
+        extractor.setDataSource(aacPath);
+        int trackIndex = VideoUtil.selectTrack(extractor, true);
+        MediaFormat aacFormat = extractor.getTrackFormat(trackIndex);
+        int sampleRate = aacFormat.getInteger(MediaFormat.KEY_SAMPLE_RATE);
+        int oriChannelCount = aacFormat.getInteger(MediaFormat.KEY_CHANNEL_COUNT);
+        int channelConfig = AudioFormat.CHANNEL_IN_MONO;
+        if (oriChannelCount == 2) {
+            channelConfig = AudioFormat.CHANNEL_IN_STEREO;
+        }
+        new PcmToWavUtil(sampleRate, channelConfig, oriChannelCount, AudioFormat.ENCODING_PCM_16BIT).pcmToWav(pcmFile2.getAbsolutePath(), wavFile.getAbsolutePath());
+        AudioUtil.encodeWAVToAAC(wavFile.getPath(), outPath, aacFormat, listener);
+    }
+
+    /**
      * @param volume
      * @return 0~100 -> 0~1
      */
@@ -391,6 +418,123 @@ public class AudioUtil {
         }
     }
 
+    /**
+     * 将WAV音频编码成Aac
+     *
+     * @param wavPath
+     * @param outPath
+     * @param aacFormat 待编码成的AAC格式，需包含{@link MediaFormat#KEY_SAMPLE_RATE}
+     *                  ,{@link MediaFormat#KEY_CHANNEL_COUNT},{@link MediaFormat#KEY_BIT_RATE},
+     *                  {@link MediaFormat#KEY_MAX_INPUT_SIZE}，前两个必须
+     * @param listener
+     * @throws IOException
+     */
+    public static void encodeWAVToAAC(String wavPath, String outPath, MediaFormat aacFormat, @Nullable VideoProgressListener listener) throws IOException {
+        int sampleRate = aacFormat.getInteger(MediaFormat.KEY_SAMPLE_RATE);
+        int channelCount = aacFormat.getInteger(MediaFormat.KEY_CHANNEL_COUNT);
+        int bitrate = getAudioBitrate(aacFormat);
+        int maxBufferSize = getAudioMaxBufferSize(aacFormat);
+
+        MediaCodec encoder = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_AUDIO_AAC);
+        MediaFormat encodeFormat = MediaFormat.createAudioFormat(MediaFormat.MIMETYPE_AUDIO_AAC, sampleRate, channelCount);//参数对应-> mime type、采样率、声道数
+        encodeFormat.setInteger(MediaFormat.KEY_BIT_RATE, bitrate);//比特率
+        encodeFormat.setInteger(MediaFormat.KEY_AAC_PROFILE, MediaCodecInfo.CodecProfileLevel.AACObjectLC);
+        encodeFormat.setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, maxBufferSize);
+        encoder.configure(encodeFormat, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE);
+        encoder.start();
+
+        MediaExtractor wavExtrator = new MediaExtractor();
+        wavExtrator.setDataSource(wavPath);
+        int audioTrackIndex = VideoUtil.selectTrack(wavExtrator, true);
+        wavExtrator.selectTrack(audioTrackIndex);
+
+        MediaFormat pcmTrackFormat = wavExtrator.getTrackFormat(audioTrackIndex);
+        MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
+        maxBufferSize = getAudioMaxBufferSize(pcmTrackFormat);
+        ByteBuffer buffer = ByteBuffer.allocateDirect(maxBufferSize);
+        long durationUs = pcmTrackFormat.getLong(MediaFormat.KEY_DURATION);
+        boolean encodeInputDone = false;
+        long lastAudioFrameTimeUs = -1;
+        final int TIMEOUT_US = 2500;
+        final int AAC_FRAME_TIME_US = 1024 * 1000 * 1000 / sampleRate;
+        boolean detectTimeError = false;
+        MediaMuxer mediaMuxer = new MediaMuxer(outPath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4);
+        int muxerTrackIndex = mediaMuxer.addTrack(aacFormat);
+        mediaMuxer.start();
+        try {
+            boolean encodeDone = false;
+            while (!encodeDone) {
+                int inputBufferIndex = encoder.dequeueInputBuffer(TIMEOUT_US);
+                if (!encodeInputDone && inputBufferIndex >= 0) {
+                    long sampleTime = wavExtrator.getSampleTime();
+                    if (sampleTime < 0) {
+                        encodeInputDone = true;
+                        encoder.queueInputBuffer(inputBufferIndex, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM);
+                    } else {
+                        int flags = wavExtrator.getSampleFlags();
+                        buffer.clear();
+                        int size = wavExtrator.readSampleData(buffer, 0);
+                        ByteBuffer inputBuffer = encoder.getInputBuffer(inputBufferIndex);
+                        inputBuffer.clear();
+                        inputBuffer.put(buffer);
+                        inputBuffer.position(0);
+                        CL.i("audio queuePcmBuffer " + sampleTime / 1000 + " size:" + size);
+                        encoder.queueInputBuffer(inputBufferIndex, 0, size, sampleTime, flags);
+                        wavExtrator.advance();
+                    }
+                }
+
+                while (true) {
+                    int outputBufferIndex = encoder.dequeueOutputBuffer(info, TIMEOUT_US);
+                    if (outputBufferIndex == MediaCodec.INFO_TRY_AGAIN_LATER) {
+                        break;
+                    } else if (outputBufferIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
+                        MediaFormat newFormat = encoder.getOutputFormat();
+                        CL.i("audio decode newFormat = " + newFormat);
+                    } else if (outputBufferIndex < 0) {
+                        //ignore
+                        CL.e("unexpected result from audio decoder.dequeueOutputBuffer: " + outputBufferIndex);
+                    } else {
+                        if (info.flags == MediaCodec.BUFFER_FLAG_END_OF_STREAM) {
+                            encodeDone = true;
+                            break;
+                        }
+                        ByteBuffer encodeOutputBuffer = encoder.getOutputBuffer(outputBufferIndex);
+                        CL.i("audio writeSampleData " + info.presentationTimeUs + " size:" + info.size + " flags:" + info.flags);
+                        if (!detectTimeError && lastAudioFrameTimeUs != -1 && info.presentationTimeUs < lastAudioFrameTimeUs + AAC_FRAME_TIME_US) {
+                            //某些情况下帧时间会出错，目前未找到原因（系统相机录得双声道视频正常，我录的单声道视频不正常）
+                            CL.e("audio 时间戳错误，lastAudioFrameTimeUs:" + lastAudioFrameTimeUs + " " +
+                                    "info.presentationTimeUs:" + info.presentationTimeUs);
+                            detectTimeError = true;
+                        }
+                        if (detectTimeError) {
+                            info.presentationTimeUs = lastAudioFrameTimeUs + AAC_FRAME_TIME_US;
+                            CL.e("audio 时间戳错误，使用修正的时间戳:" + info.presentationTimeUs);
+                            detectTimeError = false;
+                        }
+                        if (info.flags != MediaCodec.BUFFER_FLAG_CODEC_CONFIG) {
+                            lastAudioFrameTimeUs = info.presentationTimeUs;
+                        }
+                        mediaMuxer.writeSampleData(muxerTrackIndex, encodeOutputBuffer, info);
+                        if (listener != null) {
+                            float encodeProgress = (info.presentationTimeUs - 0) / (float) durationUs;
+                            encodeProgress = encodeProgress < 0 ? 0 : encodeProgress;
+                            encodeProgress = encodeProgress > 1 ? 1 : encodeProgress;
+                            listener.onProgress(0.5f + encodeProgress * 0.5f);
+                        }
+
+                        encodeOutputBuffer.clear();
+                        encoder.releaseOutputBuffer(outputBufferIndex, false);
+                    }
+                }
+            }
+        } finally {
+            wavExtrator.release();
+            encoder.release();
+            mediaMuxer.release();
+        }
+    }
+
     public static boolean reSamplePcm(String srcPath, String dstPath, int srcSampleRate, int dstSampleRate, int srcChannelCount) {
         FileInputStream fis = null;
         FileOutputStream fos = null;
@@ -706,9 +850,11 @@ public class AudioUtil {
     }
 
     /**
-     * 不需要改变音频速率的情况下，直接读写就可
+     * 替换视频的音轨
+     *
+     * @param repeat 音频不够长时是否重复填充
      */
-    public static void replaceAudioTrack(String videoPath, String aacPath, String outPath,boolean repeat) throws IOException {
+    public static void replaceAudioTrack(String videoPath, String aacPath, String outPath, boolean repeat) throws IOException {
         MediaExtractor videoExtractor = new MediaExtractor();
         videoExtractor.setDataSource(videoPath);
         MediaExtractor aacExtractor = new MediaExtractor();
@@ -763,7 +909,7 @@ public class AudioUtil {
                     }
                     int flags = aacExtractor.getSampleFlags();
                     int size = aacExtractor.readSampleData(audioBuffer, 0);
-                    sampleTimeUs+=baseAudioSampleTime;
+                    sampleTimeUs += baseAudioSampleTime;
                     info.presentationTimeUs = sampleTimeUs;
                     lastAudioSampleTime = sampleTimeUs;
                     info.flags = flags;
@@ -772,7 +918,7 @@ public class AudioUtil {
                     aacExtractor.advance();
                 }
                 baseAudioSampleTime = lastAudioSampleTime;
-                if(!repeat){
+                if (!repeat) {
                     break;
                 }
             }
