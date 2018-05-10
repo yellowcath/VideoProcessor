@@ -708,7 +708,7 @@ public class AudioUtil {
     /**
      * 不需要改变音频速率的情况下，直接读写就可
      */
-    public static void replaceAudioTrack(String videoPath, String aacPath, String outPath) throws IOException {
+    public static void replaceAudioTrack(String videoPath, String aacPath, String outPath,boolean repeat) throws IOException {
         MediaExtractor videoExtractor = new MediaExtractor();
         videoExtractor.setDataSource(videoPath);
         MediaExtractor aacExtractor = new MediaExtractor();
@@ -749,21 +749,32 @@ public class AudioUtil {
             //写音频
             maxBufferSize = getAudioMaxBufferSize(audioFormat);
             ByteBuffer audioBuffer = ByteBuffer.allocateDirect(maxBufferSize);
-            while (true) {
-                long sampleTimeUs = aacExtractor.getSampleTime();
-                if (sampleTimeUs == -1) {
+            long lastAudioSampleTime = 0;
+            long baseAudioSampleTime = 0;
+            while (lastAudioSampleTime < lastVideoTimeUs) {
+                aacExtractor.seekTo(0, MediaExtractor.SEEK_TO_CLOSEST_SYNC);
+                while (true) {
+                    long sampleTimeUs = aacExtractor.getSampleTime();
+                    if (sampleTimeUs == -1) {
+                        break;
+                    }
+                    if (sampleTimeUs > lastVideoTimeUs) {
+                        break;
+                    }
+                    int flags = aacExtractor.getSampleFlags();
+                    int size = aacExtractor.readSampleData(audioBuffer, 0);
+                    sampleTimeUs+=baseAudioSampleTime;
+                    info.presentationTimeUs = sampleTimeUs;
+                    lastAudioSampleTime = sampleTimeUs;
+                    info.flags = flags;
+                    info.size = size;
+                    mediaMuxer.writeSampleData(muxerAudioTrackIndex, audioBuffer, info);
+                    aacExtractor.advance();
+                }
+                baseAudioSampleTime = lastAudioSampleTime;
+                if(!repeat){
                     break;
                 }
-                if (sampleTimeUs > lastVideoTimeUs) {
-                    break;
-                }
-                int flags = aacExtractor.getSampleFlags();
-                int size = aacExtractor.readSampleData(audioBuffer, 0);
-                info.presentationTimeUs = sampleTimeUs;
-                info.flags = flags;
-                info.size = size;
-                mediaMuxer.writeSampleData(muxerAudioTrackIndex, audioBuffer, info);
-                aacExtractor.advance();
             }
             mediaMuxer.stop();
             mediaMuxer.release();
