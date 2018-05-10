@@ -2,9 +2,8 @@ package us.pinguo.videoprocessor;
 
 import android.media.MediaExtractor;
 import android.media.MediaFormat;
-import android.support.test.InstrumentationRegistry;
 import android.support.test.runner.AndroidJUnit4;
-import com.hw.videoprocessor.VideoProcessor;
+import android.util.Log;
 import com.hw.videoprocessor.VideoUtil;
 import com.hw.videoprocessor.util.AudioUtil;
 import org.junit.Test;
@@ -25,10 +24,14 @@ import java.nio.channels.FileChannel;
 public class AacTest {
     @Test
     public void test() throws Exception {
-        File videoFile = new File("/mnt/sdcard/DCIM/Camera/C360VID_20180424_094256.mp4");
+        File videoFile = new File("/mnt/sdcard/DCIM/Camera/C360VID_20180420_151736.mp4");
+        File aacFile = new File("/mnt/sdcard/test.aac");
         File outFile = new File("/mnt/sdcard/test.mp4");
-        VideoProcessor.adjustVideoVolume(InstrumentationRegistry.getTargetContext(), videoFile.getAbsolutePath(),
-                outFile.getAbsolutePath(), 2);
+        outFile.delete();
+        long s = System.currentTimeMillis();
+        AudioUtil.replaceAudioTrack(videoFile.getAbsolutePath(), aacFile.getAbsolutePath(), outFile.getAbsolutePath());
+        long e = System.currentTimeMillis();
+        Log.e("hwLog","time:"+(e-s)+"ms");
     }
 
     //    @Test

@@ -215,7 +215,7 @@ public class AudioUtil {
                 channelCount = channelCount1;
             }
             if (sampleRate1 != sampleRate2) {
-                sampleRate = Math.min(sampleRate1,sampleRate2);
+                sampleRate = Math.min(sampleRate1, sampleRate2);
                 if (sampleRate1 != sampleRate) {
                     reSamplePcm(pcm1, temp1.getAbsolutePath(), sampleRate1, sampleRate, channelCount1);
                     File file = new File(pcm1);
@@ -702,6 +702,74 @@ public class AudioUtil {
             outFile.delete();
             pcmExtrator.release();
             encoder.release();
+        }
+    }
+
+    /**
+     * 不需要改变音频速率的情况下，直接读写就可
+     */
+    public static void replaceAudioTrack(String videoPath, String aacPath, String outPath) throws IOException {
+        MediaExtractor videoExtractor = new MediaExtractor();
+        videoExtractor.setDataSource(videoPath);
+        MediaExtractor aacExtractor = new MediaExtractor();
+        aacExtractor.setDataSource(aacPath);
+        try {
+            int videoTrack = VideoUtil.selectTrack(videoExtractor, false);
+            int audioTrack = VideoUtil.selectTrack(aacExtractor, true);
+
+            videoExtractor.selectTrack(videoTrack);
+            aacExtractor.selectTrack(audioTrack);
+            MediaFormat audioFormat = aacExtractor.getTrackFormat(audioTrack);
+            MediaFormat videoFormat = videoExtractor.getTrackFormat(videoTrack);
+
+            MediaMuxer mediaMuxer = new MediaMuxer(outPath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4);
+            int muxerAudioTrackIndex = mediaMuxer.addTrack(audioFormat);
+            int muxerVideoTrackIndex = mediaMuxer.addTrack(videoFormat);
+            mediaMuxer.start();
+
+            MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
+            long lastVideoTimeUs = 0;
+            //写视频
+            int maxBufferSize = videoFormat.getInteger(MediaFormat.KEY_MAX_INPUT_SIZE);
+            ByteBuffer videoBuffer = ByteBuffer.allocateDirect(maxBufferSize);
+            while (true) {
+                long sampleTimeUs = videoExtractor.getSampleTime();
+                if (sampleTimeUs == -1) {
+                    break;
+                }
+                int flags = videoExtractor.getSampleFlags();
+                int size = videoExtractor.readSampleData(videoBuffer, 0);
+                info.presentationTimeUs = sampleTimeUs;
+                info.flags = flags;
+                info.size = size;
+                mediaMuxer.writeSampleData(muxerVideoTrackIndex, videoBuffer, info);
+                lastVideoTimeUs = sampleTimeUs;
+                videoExtractor.advance();
+            }
+            //写音频
+            maxBufferSize = getAudioMaxBufferSize(audioFormat);
+            ByteBuffer audioBuffer = ByteBuffer.allocateDirect(maxBufferSize);
+            while (true) {
+                long sampleTimeUs = aacExtractor.getSampleTime();
+                if (sampleTimeUs == -1) {
+                    break;
+                }
+                if (sampleTimeUs > lastVideoTimeUs) {
+                    break;
+                }
+                int flags = aacExtractor.getSampleFlags();
+                int size = aacExtractor.readSampleData(audioBuffer, 0);
+                info.presentationTimeUs = sampleTimeUs;
+                info.flags = flags;
+                info.size = size;
+                mediaMuxer.writeSampleData(muxerAudioTrackIndex, audioBuffer, info);
+                aacExtractor.advance();
+            }
+            mediaMuxer.stop();
+            mediaMuxer.release();
+        } finally {
+            videoExtractor.release();
+            aacExtractor.release();
         }
     }
 

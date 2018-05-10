@@ -36,7 +36,7 @@ public class PcmTest {
         File pcmFile3 = new File("/sdcard/re3.pcm");
 
 
-        VideoProcessor.reverseVideo(context, videoFile.getAbsolutePath(), outFile.getAbsolutePath(),null);
+        VideoProcessor.reverseVideo(context, videoFile.getAbsolutePath(), outFile.getAbsolutePath(),true,null);
         AudioUtil.decodeToPCM(outFile.getAbsolutePath(), pcmFile3.getAbsolutePath(), null, null);
         AudioUtil.decodeToPCM(videoFile.getAbsolutePath(), pcmFile.getAbsolutePath(), null, null);
         AudioUtil.reversePcm(pcmFile.getAbsolutePath(), pcmFile2.getAbsolutePath());
