@@ -426,7 +426,7 @@ public class VideoProcessor {
      */
     public static void adjustVideoVolume(Context context, final String videoInput, final String output,
                                          @IntRange(from = 0, to = 100) int videoVolume, float faceInSec, float fadeOutSec) throws IOException {
-        if (videoVolume == 100) {
+        if (videoVolume == 100 && faceInSec == 0f && fadeOutSec == 0f) {
             AudioUtil.copyFile(videoInput, output);
             return;
         }
