@@ -67,6 +67,7 @@ public class AudioUtil {
 
     /**
      * 调整aac音量
+     *
      * @throws IOException
      */
     public static void adjustAacVolume(Context context, String aacPath, String outPath, @IntRange(from = 0, to = 100) int volume
@@ -846,6 +847,46 @@ public class AudioUtil {
             outFile.delete();
             pcmExtrator.release();
             encoder.release();
+        }
+    }
+
+    /**
+     * 去掉视频的音轨
+     */
+    public static void removeAudioTrack(String videoPath, String outPath) throws IOException {
+        MediaExtractor videoExtractor = new MediaExtractor();
+        videoExtractor.setDataSource(videoPath);
+        try {
+            int videoTrack = VideoUtil.selectTrack(videoExtractor, false);
+
+            videoExtractor.selectTrack(videoTrack);
+            MediaFormat videoFormat = videoExtractor.getTrackFormat(videoTrack);
+
+            MediaMuxer mediaMuxer = new MediaMuxer(outPath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4);
+            int muxerVideoTrackIndex = mediaMuxer.addTrack(videoFormat);
+            mediaMuxer.start();
+
+            MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
+            //写视频
+            int maxBufferSize = videoFormat.getInteger(MediaFormat.KEY_MAX_INPUT_SIZE);
+            ByteBuffer videoBuffer = ByteBuffer.allocateDirect(maxBufferSize);
+            while (true) {
+                long sampleTimeUs = videoExtractor.getSampleTime();
+                if (sampleTimeUs == -1) {
+                    break;
+                }
+                int flags = videoExtractor.getSampleFlags();
+                int size = videoExtractor.readSampleData(videoBuffer, 0);
+                info.presentationTimeUs = sampleTimeUs;
+                info.flags = flags;
+                info.size = size;
+                mediaMuxer.writeSampleData(muxerVideoTrackIndex, videoBuffer, info);
+                videoExtractor.advance();
+            }
+            mediaMuxer.stop();
+            mediaMuxer.release();
+        } finally {
+            videoExtractor.release();
         }
     }
 
