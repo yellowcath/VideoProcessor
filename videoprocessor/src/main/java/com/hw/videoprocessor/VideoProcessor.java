@@ -425,7 +425,7 @@ public class VideoProcessor {
      * @param videoVolume 0静音，100表示原音
      */
     public static void adjustVideoVolume(Context context, final String videoInput, final String output,
-                                         @IntRange(from = 0, to = 100) int videoVolume) throws IOException {
+                                         @IntRange(from = 0, to = 100) int videoVolume, float faceInSec, float fadeOutSec) throws IOException {
         if (videoVolume == 100) {
             AudioUtil.copyFile(videoInput, output);
             return;
@@ -455,6 +455,9 @@ public class VideoProcessor {
         int channelConfig = AudioFormat.CHANNEL_IN_MONO;
         if (channelCount == 2) {
             channelConfig = AudioFormat.CHANNEL_IN_STEREO;
+        }
+        if (faceInSec > 0 || fadeOutSec > 0) {
+            AudioFadeUtil.audioFade(videoPcmAdjustedFile.getAbsolutePath(), sampleRate, channelCount, faceInSec, fadeOutSec);
         }
         new PcmToWavUtil(sampleRate, channelConfig, channelCount, AudioFormat.ENCODING_PCM_16BIT).pcmToWav(videoPcmAdjustedFile.getAbsolutePath(), videoWavFile.getAbsolutePath());
 
