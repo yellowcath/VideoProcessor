@@ -62,6 +62,7 @@ public class MainActivity extends AppCompatActivity {
         setContentView(R.layout.activity_main);
         initActionBar();
         CL.setLogEnable(true);
+
         final TextView uploadVideo = (TextView) findViewById(R.id.uploadVideo);
         TextView cutVideo = (TextView) findViewById(R.id.cropVideo);
         TextView scaleVideo = (TextView) findViewById(R.id.scaleVideo);
