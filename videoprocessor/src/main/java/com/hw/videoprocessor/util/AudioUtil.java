@@ -934,6 +934,8 @@ public class AudioUtil {
                 videoExtractor.advance();
             }
             //写音频
+            int sampleRate = audioFormat.getInteger(MediaFormat.KEY_SAMPLE_RATE);
+            final int AAC_FRAME_TIME_US = 1024 * 1000 * 1000 / sampleRate;
             maxBufferSize = getAudioMaxBufferSize(audioFormat);
             ByteBuffer audioBuffer = ByteBuffer.allocateDirect(maxBufferSize);
             long lastAudioSampleTime = 0;
@@ -945,12 +947,13 @@ public class AudioUtil {
                     if (sampleTimeUs == -1) {
                         break;
                     }
+                    sampleTimeUs += baseAudioSampleTime;
                     if (sampleTimeUs > lastVideoTimeUs) {
+                        lastAudioSampleTime = sampleTimeUs;
                         break;
                     }
                     int flags = aacExtractor.getSampleFlags();
                     int size = aacExtractor.readSampleData(audioBuffer, 0);
-                    sampleTimeUs += baseAudioSampleTime;
                     info.presentationTimeUs = sampleTimeUs;
                     lastAudioSampleTime = sampleTimeUs;
                     info.flags = flags;
@@ -958,7 +961,7 @@ public class AudioUtil {
                     mediaMuxer.writeSampleData(muxerAudioTrackIndex, audioBuffer, info);
                     aacExtractor.advance();
                 }
-                baseAudioSampleTime = lastAudioSampleTime;
+                baseAudioSampleTime = lastAudioSampleTime+AAC_FRAME_TIME_US;
                 if (!repeat) {
                     break;
                 }
