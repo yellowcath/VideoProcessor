@@ -158,7 +158,7 @@ public class VideoEncodeThread extends Thread implements IVideoEncodeThread {
                     info.presentationTimeUs = 0;
                 }
                 //写入视频
-                if (!detectTimeError && lastVideoFrameTimeUs != -1 && info.presentationTimeUs < lastVideoFrameTimeUs + VIDEO_FRAME_TIME_US) {
+                if (!detectTimeError && lastVideoFrameTimeUs != -1 && info.presentationTimeUs < lastVideoFrameTimeUs + VIDEO_FRAME_TIME_US/2) {
                     //某些视频帧时间会出错
                     CL.e("video 时间戳错误，lastVideoFrameTimeUs:" + lastVideoFrameTimeUs + " " +
                             "info.presentationTimeUs:" + info.presentationTimeUs + " VIDEO_FRAME_TIME_US:" + VIDEO_FRAME_TIME_US);
