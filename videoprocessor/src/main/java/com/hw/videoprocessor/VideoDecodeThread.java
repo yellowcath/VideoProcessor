@@ -70,9 +70,14 @@ public class VideoDecodeThread extends Thread {
             if (mOutputSurface != null) {
                 mOutputSurface.release();
             }
-            if (mDecoder != null) {
-                mDecoder.stop();
-                mDecoder.release();
+            try {
+                if (mDecoder != null) {
+                    mDecoder.stop();
+                    mDecoder.release();
+                }
+            } catch (Exception e) {
+                mException = mException == null ? e : mException;
+                CL.e(e);
             }
         }
     }
