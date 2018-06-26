@@ -353,4 +353,17 @@ public class VideoUtil {
             return -1;
         }
     }
+
+    static List<Long> getFrameTimeStampsList(MediaExtractor extractor){
+        List<Long> frameTimeStamps = new ArrayList<>();
+        while (true) {
+            long sampleTime = extractor.getSampleTime();
+            if (sampleTime < 0) {
+                break;
+            }
+            frameTimeStamps.add(sampleTime);
+            extractor.advance();
+        }
+        return frameTimeStamps;
+    }
 }
