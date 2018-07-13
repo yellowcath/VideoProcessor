@@ -127,6 +127,8 @@ public class VideoDecodeThread extends Thread {
         boolean decoderDone = false;
         boolean inputDone = false;
         long videoStartTimeUs = -1;
+        int decodeTryAgainCount = 0;
+
         while (!decoderDone) {
             //还有帧数据，输入解码器
             if (!inputDone) {
@@ -167,6 +169,17 @@ public class VideoDecodeThread extends Thread {
             while (decoderOutputAvailable) {
                 int outputBufferIndex = mDecoder.dequeueOutputBuffer(info, TIMEOUT_USEC);
                 CL.i("outputBufferIndex = " + outputBufferIndex);
+                if (inputDone && outputBufferIndex == MediaCodec.INFO_TRY_AGAIN_LATER) {
+                    decodeTryAgainCount++;
+                    if (decodeTryAgainCount > 10) {
+                        //小米2上出现BUFFER_FLAG_END_OF_STREAM之后一直tryAgain的问题
+                        CL.e("INFO_TRY_AGAIN_LATER 10 times,force End!");
+                        decoderDone = true;
+                        break;
+                    }
+                } else {
+                    decodeTryAgainCount = 0;
+                }
                 if (outputBufferIndex == MediaCodec.INFO_TRY_AGAIN_LATER) {
                     break;
                 } else if (outputBufferIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {

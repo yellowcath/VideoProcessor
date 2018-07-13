@@ -105,8 +105,8 @@ public class VideoEncodeThread extends Thread implements IVideoEncodeThread {
         }
         int maxBitrate = VideoUtil.getMaxSupportBitrate(mEncoder, MIME_TYPE);
         if (maxBitrate > 0 && mBitrate > maxBitrate) {
-            mBitrate = maxBitrate;
             CL.e(mBitrate + " bitrate too large,set to:" + maxBitrate);
+            mBitrate = (int) (maxBitrate*0.8f);//直接设置最大值小米2报错
         }
         outputFormat.setInteger(MediaFormat.KEY_BIT_RATE, mBitrate);
         mEncoder.configure(outputFormat, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE);
