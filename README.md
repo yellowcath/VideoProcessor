@@ -4,11 +4,11 @@
 
 - **体积小** ：编译后的aar只有262K，ffmpeg一个so就7、8M，精简之后也差不多还有一半大小
 - **速度快** ：在huaweiP9上压缩(1080P 20s 20000k -> 720p 2000k)：
- |  lib | 耗时 |
-| ------ | ------ |
-| VideoProcessor| 13.3s |
-| ffmpeg | 172s |
-| ffmpeg(ultrafast) | 74s |
+  lib | 耗时
+ ------ | ------
+ VideoProcessor| 13.3s
+ ffmpeg | 172s
+ ffmpeg(ultrafast) | 74s
 
 ### Gradle
 在根目录下的build.gradle里添加maven仓库
