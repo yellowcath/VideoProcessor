@@ -437,11 +437,9 @@ public class VideoProcessor {
             if (listener != null) {
                 listener.onProgress(1f);
             }
-        }
-        catch (Exception e){
+        } catch (Exception e) {
             CL.e(e);
-        }
-        finally {
+        } finally {
             extractor.release();
             mediaMuxer.release();
         }
@@ -479,7 +477,7 @@ public class VideoProcessor {
         AudioUtil.adjustPcmVolume(videoPcmFile.getAbsolutePath(), videoPcmAdjustedFile.getAbsolutePath(), videoVolume);
 
         MediaFormat audioTrackFormat = oriExtrator.getTrackFormat(oriAudioIndex);
-        int sampleRate = audioTrackFormat.getInteger(MediaFormat.KEY_SAMPLE_RATE);
+        final int sampleRate = audioTrackFormat.getInteger(MediaFormat.KEY_SAMPLE_RATE);
         int channelCount = audioTrackFormat.containsKey(MediaFormat.KEY_CHANNEL_COUNT) ? audioTrackFormat.getInteger(MediaFormat.KEY_CHANNEL_COUNT) : 1;
         int channelConfig = AudioFormat.CHANNEL_IN_MONO;
         if (channelCount == 2) {
@@ -651,7 +649,7 @@ public class VideoProcessor {
      * @param videoVolume 0静音，100表示原音
      * @param aacVolume   0静音，100表示原音
      */
-    public static void mixAudioTrack(Context context, final String videoInput, final String aacInput, final String output,
+    public static void mixAudioTrack(Context context, final String videoInput, final String audioInput, final String output,
                                      Integer startTimeMs, Integer endTimeMs,
                                      @IntRange(from = 0, to = 100) int videoVolume,
                                      @IntRange(from = 0, to = 100) int aacVolume,
@@ -673,16 +671,16 @@ public class VideoProcessor {
             videoDurationMs = (endTimeUs - startTimeUs) / 1000;
         }
         MediaMetadataRetriever retriever = new MediaMetadataRetriever();
-        retriever.setDataSource(aacInput);
+        retriever.setDataSource(audioInput);
         final int aacDurationMs = Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION));
         retriever.release();
 
         MediaExtractor oriExtrator = new MediaExtractor();
         oriExtrator.setDataSource(videoInput);
         int oriAudioIndex = VideoUtil.selectTrack(oriExtrator, true);
-        MediaExtractor aacExtractor = new MediaExtractor();
-        aacExtractor.setDataSource(aacInput);
-        int aacAudioIndex = VideoUtil.selectTrack(aacExtractor, true);
+        MediaExtractor audioExtractor = new MediaExtractor();
+        audioExtractor.setDataSource(audioInput);
+        int aacAudioIndex = VideoUtil.selectTrack(audioExtractor, true);
         File wavFile;
         int sampleRate;
         File adjustedPcm;
@@ -718,7 +716,7 @@ public class VideoProcessor {
                 @Override
                 public void run() {
                     try {
-                        AudioUtil.decodeToPCM(aacInput, finalAacPcmFile.getAbsolutePath(), 0, aacDurationMs > videoDurationMs ? videoDurationMs * 1000 : aacDurationMs * 1000);
+                        AudioUtil.decodeToPCM(audioInput, finalAacPcmFile.getAbsolutePath(), 0, aacDurationMs > videoDurationMs ? videoDurationMs * 1000 : aacDurationMs * 1000);
                     } catch (IOException e) {
                         throw new RuntimeException(e);
                     } finally {
@@ -733,19 +731,16 @@ public class VideoProcessor {
             }
             long s2 = System.currentTimeMillis();
 
-            MediaFormat oriAudioFormat = oriExtrator.getTrackFormat(oriAudioIndex);
-            audioBitrate = AudioUtil.getAudioBitrate(oriAudioFormat);
-            muxerAudioIndex = mediaMuxer.addTrack(oriAudioFormat);
 
             //检查两段音频格式是否一致,不一致则统一转换为单声道+44100
             Pair<Integer, Integer> resultPair = AudioUtil.checkAndAdjustAudioFormat(videoPcmFile.getAbsolutePath(),
                     aacPcmFile.getAbsolutePath(),
                     oriExtrator.getTrackFormat(oriAudioIndex),
-                    aacExtractor.getTrackFormat(aacAudioIndex)
+                    audioExtractor.getTrackFormat(aacAudioIndex)
             );
             channelCount = resultPair.first;
             sampleRate = resultPair.second;
-            aacExtractor.release();
+            audioExtractor.release();
             long s3 = System.currentTimeMillis();
 
             //检查音频长度是否需要重复填充
@@ -772,15 +767,38 @@ public class VideoProcessor {
             new PcmToWavUtil(sampleRate, channelConfig, channelCount, AudioFormat.ENCODING_PCM_16BIT).pcmToWav(adjustedPcm.getAbsolutePath(), wavFile.getAbsolutePath());
             long s5 = System.currentTimeMillis();
             CL.et("hwLog", String.format("decode:%dms,resample:%dms,mix:%dms,fade:%dms", s2 - s1, s3 - s2, s4 - s3, s5 - s4));
-        } else {
-            AudioUtil.decodeToPCM(aacInput, aacPcmFile.getAbsolutePath(), 0,
-                    aacDurationMs > videoDurationMs ? videoDurationMs * 1000 : aacDurationMs * 1000);
-            MediaFormat aacTrackFormat = aacExtractor.getTrackFormat(aacAudioIndex);
-            audioBitrate = AudioUtil.getAudioBitrate(aacTrackFormat);
-            muxerAudioIndex = mediaMuxer.addTrack(aacTrackFormat);
+            MediaFormat oriAudioFormat = oriExtrator.getTrackFormat(oriAudioIndex);
+            audioBitrate = AudioUtil.getAudioBitrate(oriAudioFormat);
+            oriAudioFormat.setString(MediaFormat.KEY_MIME, MediaFormat.MIMETYPE_AUDIO_AAC);
+            AudioUtil.checkCsd(oriAudioFormat,
+                    MediaCodecInfo.CodecProfileLevel.AACObjectLC,
+                    sampleRate,
+                    channelCount
 
-            sampleRate = aacTrackFormat.getInteger(MediaFormat.KEY_SAMPLE_RATE);
-            channelCount = aacTrackFormat.containsKey(MediaFormat.KEY_CHANNEL_COUNT) ? aacTrackFormat.getInteger(MediaFormat.KEY_CHANNEL_COUNT) : 1;
+            );
+            muxerAudioIndex = mediaMuxer.addTrack(oriAudioFormat);
+        } else {
+            AudioUtil.decodeToPCM(audioInput, aacPcmFile.getAbsolutePath(), 0,
+                    aacDurationMs > videoDurationMs ? videoDurationMs * 1000 : aacDurationMs * 1000);
+            MediaFormat audioTrackFormat = audioExtractor.getTrackFormat(aacAudioIndex);
+            audioBitrate = AudioUtil.getAudioBitrate(audioTrackFormat);
+            channelCount = audioTrackFormat.containsKey(MediaFormat.KEY_CHANNEL_COUNT) ?
+                    audioTrackFormat.getInteger(MediaFormat.KEY_CHANNEL_COUNT) : 1;
+            sampleRate = audioTrackFormat.containsKey(MediaFormat.KEY_SAMPLE_RATE) ?
+                    audioTrackFormat.getInteger(MediaFormat.KEY_SAMPLE_RATE) : 44100;
+            int channelConfig = AudioFormat.CHANNEL_IN_MONO;
+            if (channelCount == 2) {
+                channelConfig = AudioFormat.CHANNEL_IN_STEREO;
+            }
+            AudioUtil.checkCsd(audioTrackFormat,
+                    MediaCodecInfo.CodecProfileLevel.AACObjectLC,
+                    sampleRate,
+                    channelCount);
+            audioTrackFormat.setString(MediaFormat.KEY_MIME, MediaFormat.MIMETYPE_AUDIO_AAC);
+            muxerAudioIndex = mediaMuxer.addTrack(audioTrackFormat);
+
+            sampleRate = audioTrackFormat.getInteger(MediaFormat.KEY_SAMPLE_RATE);
+            channelCount = audioTrackFormat.containsKey(MediaFormat.KEY_CHANNEL_COUNT) ? audioTrackFormat.getInteger(MediaFormat.KEY_CHANNEL_COUNT) : 1;
             if (channelCount > 2) {
                 File tempFile = new File(aacPcmFile + ".channel");
                 AudioUtil.stereoToMonoSimple(aacPcmFile.getAbsolutePath(), tempFile.getAbsolutePath(), channelCount);
@@ -796,7 +814,7 @@ public class VideoProcessor {
                 adjustedPcm = aacPcmFile;
             }
 
-            int channelConfig = AudioFormat.CHANNEL_IN_MONO;
+            channelConfig = AudioFormat.CHANNEL_IN_MONO;
             if (channelCount == 2) {
                 channelConfig = AudioFormat.CHANNEL_IN_STEREO;
             }
@@ -950,9 +968,9 @@ public class VideoProcessor {
             try {
                 pcmExtrator.release();
                 oriExtrator.release();
-                mediaMuxer.release();
                 encoder.stop();
                 encoder.release();
+                mediaMuxer.release();
             } catch (Exception e) {
                 CL.e(e);
             }
