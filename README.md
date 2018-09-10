@@ -26,7 +26,7 @@ allprojects {
 ``` groovy
 
 	dependencies {
-	        implementation 'com.github.yellowcath:VideoProcessor:2.3.0'
+	        implementation 'com.github.yellowcath:VideoProcessor:2.3.1'
 	}
 ```
 
