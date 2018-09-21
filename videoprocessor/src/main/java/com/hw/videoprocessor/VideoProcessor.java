@@ -29,6 +29,8 @@ import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+import static com.hw.videoprocessor.util.AudioUtil.getAudioBitrate;
+
 /**
  * Created by huangwei on 2018/2/2.
  */
@@ -198,6 +200,16 @@ public class VideoProcessor {
         Integer audioEndTimeMs = processor.endTimeMs;
         if (audioIndex >= 0) {
             MediaFormat audioTrackFormat = extractor.getTrackFormat(audioIndex);
+            String audioMimeType = MediaFormat.MIMETYPE_AUDIO_AAC;
+            int bitrate = getAudioBitrate(audioTrackFormat);
+            int channelCount = audioTrackFormat.getInteger(MediaFormat.KEY_CHANNEL_COUNT);
+            int sampleRate = audioTrackFormat.getInteger(MediaFormat.KEY_SAMPLE_RATE);
+            int maxBufferSize = AudioUtil.getAudioMaxBufferSize(audioTrackFormat);
+            MediaFormat audioEncodeFormat = MediaFormat.createAudioFormat(audioMimeType, sampleRate, channelCount);//参数对应-> mime type、采样率、声道数
+            audioEncodeFormat.setInteger(MediaFormat.KEY_BIT_RATE, bitrate);//比特率
+            audioEncodeFormat.setInteger(MediaFormat.KEY_AAC_PROFILE, MediaCodecInfo.CodecProfileLevel.AACObjectLC);
+            audioEncodeFormat.setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, maxBufferSize);
+
             if (shouldChangeAudioSpeed) {
                 if (processor.startTimeMs != null || processor.endTimeMs != null || processor.speed != null) {
                     long durationUs = audioTrackFormat.getLong(MediaFormat.KEY_DURATION);
@@ -207,7 +219,7 @@ public class VideoProcessor {
                     if (processor.speed != null) {
                         durationUs /= processor.speed;
                     }
-                    audioTrackFormat.setLong(MediaFormat.KEY_DURATION, durationUs);
+                    audioEncodeFormat.setLong(MediaFormat.KEY_DURATION, durationUs);
                 }
             } else {
                 long videoDurationUs = durationMs * 1000;
@@ -221,11 +233,18 @@ public class VideoProcessor {
                         videoDurationUs /= processor.speed;
                     }
                     long avDurationUs = videoDurationUs < audioDurationUs ? videoDurationUs : audioDurationUs;
-                    audioTrackFormat.setLong(MediaFormat.KEY_DURATION, avDurationUs);
+                    audioEncodeFormat.setLong(MediaFormat.KEY_DURATION, avDurationUs);
                     audioEndTimeMs = (processor.startTimeMs == null ? 0 : processor.startTimeMs) + (int) (avDurationUs / 1000);
                 }
             }
-            muxerAudioTrackIndex = mediaMuxer.addTrack(audioTrackFormat);
+
+            AudioUtil.checkCsd(audioEncodeFormat,
+                    MediaCodecInfo.CodecProfileLevel.AACObjectLC,
+                    sampleRate,
+                    channelCount
+            );
+            //提前推断出音頻格式加到MeidaMuxer，不然实际上应该到音频预处理完才能addTrack，会卡住视频编码的进度
+            muxerAudioTrackIndex = mediaMuxer.addTrack(audioEncodeFormat);
         }
         extractor.selectTrack(videoIndex);
         if (processor.startTimeMs != null) {
@@ -481,7 +500,7 @@ public class VideoProcessor {
 
         final int TIMEOUT_US = 2500;
         //重新将速率变化过后的pcm写入
-        int audioBitrate = AudioUtil.getAudioBitrate(audioTrackFormat);
+        int audioBitrate = getAudioBitrate(audioTrackFormat);
 
         int oriVideoIndex = VideoUtil.selectTrack(oriExtrator, false);
         MediaFormat oriVideoFormat = oriExtrator.getTrackFormat(oriVideoIndex);
@@ -759,20 +778,19 @@ public class VideoProcessor {
             long s5 = System.currentTimeMillis();
             CL.et("hwLog", String.format("decode:%dms,resample:%dms,mix:%dms,fade:%dms", s2 - s1, s3 - s2, s4 - s3, s5 - s4));
             MediaFormat oriAudioFormat = oriExtrator.getTrackFormat(oriAudioIndex);
-            audioBitrate = AudioUtil.getAudioBitrate(oriAudioFormat);
+            audioBitrate = getAudioBitrate(oriAudioFormat);
             oriAudioFormat.setString(MediaFormat.KEY_MIME, MediaFormat.MIMETYPE_AUDIO_AAC);
             AudioUtil.checkCsd(oriAudioFormat,
                     MediaCodecInfo.CodecProfileLevel.AACObjectLC,
                     sampleRate,
                     channelCount
-
             );
             muxerAudioIndex = mediaMuxer.addTrack(oriAudioFormat);
         } else {
             AudioUtil.decodeToPCM(audioInput, aacPcmFile.getAbsolutePath(), 0,
                     aacDurationMs > videoDurationMs ? videoDurationMs * 1000 : aacDurationMs * 1000);
             MediaFormat audioTrackFormat = audioExtractor.getTrackFormat(aacAudioIndex);
-            audioBitrate = AudioUtil.getAudioBitrate(audioTrackFormat);
+            audioBitrate = getAudioBitrate(audioTrackFormat);
             channelCount = audioTrackFormat.containsKey(MediaFormat.KEY_CHANNEL_COUNT) ?
                     audioTrackFormat.getInteger(MediaFormat.KEY_CHANNEL_COUNT) : 1;
             sampleRate = audioTrackFormat.containsKey(MediaFormat.KEY_SAMPLE_RATE) ?
