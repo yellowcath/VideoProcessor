@@ -36,10 +36,11 @@ public class VideoDecodeThread extends Thread {
     private OutputSurface mOutputSurface;
     private Integer mDstFrameRate;
     private Integer mSrcFrameRate;
-
+    private boolean mDropFrames;
     public VideoDecodeThread(IVideoEncodeThread videoEncodeThread, MediaExtractor extractor,
                              @Nullable Integer startTimeMs, @Nullable Integer endTimeMs,
                              @Nullable Integer srcFrameRate, @Nullable Integer dstFrameRate, @Nullable Float speed,
+                             boolean dropFrames,
                              int videoIndex, AtomicBoolean decodeDone
 
     ) {
@@ -53,6 +54,7 @@ public class VideoDecodeThread extends Thread {
         mVideoEncodeThread = videoEncodeThread;
         mDstFrameRate = dstFrameRate;
         mSrcFrameRate = srcFrameRate;
+        mDropFrames = dropFrames;
     }
 
     @Override
@@ -110,7 +112,7 @@ public class VideoDecodeThread extends Thread {
         int frameIntervalForDrop = 0;
         int dropCount = 0;
         int frameIndex = 1;
-        if (VideoProcessor.DROP_FRAMES && mSrcFrameRate != null && mDstFrameRate != null) {
+        if (mDropFrames && mSrcFrameRate != null && mDstFrameRate != null) {
             if (mSpeed != null) {
                 mSrcFrameRate = (int) (mSrcFrameRate * mSpeed);
             }

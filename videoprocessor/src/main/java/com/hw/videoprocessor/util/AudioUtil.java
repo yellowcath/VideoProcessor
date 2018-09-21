@@ -781,13 +781,14 @@ public class AudioUtil {
         durationUs = pcmTrackFormat.getLong(MediaFormat.KEY_DURATION);
         buffer = ByteBuffer.allocateDirect(maxBufferSize);
 
+        String audioMimeType = MediaFormat.MIMETYPE_AUDIO_AAC;
         int bitrate = getAudioBitrate(oriAudioFormat);
         int channelCount = oriAudioFormat.getInteger(MediaFormat.KEY_CHANNEL_COUNT);
-        MediaFormat encodeFormat = MediaFormat.createAudioFormat(MediaFormat.MIMETYPE_AUDIO_AAC, sampleRate, channelCount);//参数对应-> mime type、采样率、声道数
+        MediaFormat encodeFormat = MediaFormat.createAudioFormat(audioMimeType, sampleRate, channelCount);//参数对应-> mime type、采样率、声道数
         encodeFormat.setInteger(MediaFormat.KEY_BIT_RATE, bitrate);//比特率
         encodeFormat.setInteger(MediaFormat.KEY_AAC_PROFILE, MediaCodecInfo.CodecProfileLevel.AACObjectLC);
         encodeFormat.setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, maxBufferSize);
-        MediaCodec encoder = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_AUDIO_AAC);
+        MediaCodec encoder = MediaCodec.createEncoderByType(audioMimeType);
         encoder.configure(encodeFormat, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE);
         encoder.start();
         boolean encodeInputDone = false;

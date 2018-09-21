@@ -10,6 +10,7 @@ import android.media.MediaFormat;
 import android.media.MediaMetadataRetriever;
 import android.media.MediaMuxer;
 import android.support.annotation.IntRange;
+import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
 import android.util.Pair;
 import com.hw.videoprocessor.util.AudioFadeUtil;
@@ -34,11 +35,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 @TargetApi(21)
 public class VideoProcessor {
     final static String TAG = "VideoProcessor";
-    final static String MIME_TYPE = "video/avc";
-    /**
-     * 帧率超过制定帧率时是否丢帧
-     */
-    public static boolean DROP_FRAMES = true;
+    final static String OUTPUT_MIME_TYPE = "video/avc";
+
     public static int DEFAULT_FRAME_RATE = 20;
     /**
      * 只有关键帧距为0的才能方便做逆序
@@ -161,33 +159,26 @@ public class VideoProcessor {
 
     /**
      * 支持裁剪缩放快慢放
-     *
-     * @param frameRate 只有{@link #DROP_FRAMES}为true时才会进行丢帧，确保输出视频帧率接近frameRate
      */
-    public static void processVideo(Context context, String input, String output,
-                                    @Nullable Integer outWidth, @Nullable Integer outHeight,
-                                    @Nullable Integer startTimeMs, @Nullable Integer endTimeMs,
-                                    @Nullable Float speed, @Nullable Boolean changeAudioSpeed, @Nullable Integer bitrate,
-                                    @Nullable Integer frameRate, @Nullable Integer iFrameInterval,
-                                    @Nullable VideoProgressListener listener) throws Exception {
+    public static void processVideo(@NonNull Context context, @NonNull Processor processor) throws Exception {
 
         MediaMetadataRetriever retriever = new MediaMetadataRetriever();
-        retriever.setDataSource(input);
+        retriever.setDataSource(processor.input);
         int originWidth = Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH));
         int originHeight = Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT));
         int rotationValue = Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION));
         int oriBitrate = Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_BITRATE));
         int durationMs = Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION));
         retriever.release();
-        if (bitrate == null) {
-            bitrate = oriBitrate;
+        if (processor.bitrate == null) {
+            processor.bitrate = oriBitrate;
         }
-        if (iFrameInterval == null) {
-            iFrameInterval = DEFAULT_I_FRAME_INTERVAL;
+        if (processor.iFrameInterval == null) {
+            processor.iFrameInterval = DEFAULT_I_FRAME_INTERVAL;
         }
 
-        int resultWidth = outWidth == null ? originWidth : outWidth;
-        int resultHeight = outHeight == null ? originHeight : outHeight;
+        int resultWidth = processor.outWidth == null ? originWidth : processor.outWidth;
+        int resultHeight = processor.outHeight == null ? originHeight : processor.outHeight;
         resultWidth = resultWidth % 2 == 0 ? resultWidth : resultWidth + 1;
         resultHeight = resultHeight % 2 == 0 ? resultHeight : resultHeight + 1;
 
@@ -198,23 +189,23 @@ public class VideoProcessor {
         }
 
         MediaExtractor extractor = new MediaExtractor();
-        extractor.setDataSource(input);
+        extractor.setDataSource(processor.input);
         int videoIndex = VideoUtil.selectTrack(extractor, false);
         int audioIndex = VideoUtil.selectTrack(extractor, true);
-        MediaMuxer mediaMuxer = new MediaMuxer(output, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4);
+        MediaMuxer mediaMuxer = new MediaMuxer(processor.output, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4);
         int muxerAudioTrackIndex = 0;
-        boolean shouldChangeAudioSpeed = changeAudioSpeed == null ? true : changeAudioSpeed;
-        Integer audioEndTimeMs = endTimeMs;
+        boolean shouldChangeAudioSpeed = processor.changeAudioSpeed == null ? true : processor.changeAudioSpeed;
+        Integer audioEndTimeMs = processor.endTimeMs;
         if (audioIndex >= 0) {
             MediaFormat audioTrackFormat = extractor.getTrackFormat(audioIndex);
             if (shouldChangeAudioSpeed) {
-                if (startTimeMs != null || endTimeMs != null || speed != null) {
+                if (processor.startTimeMs != null || processor.endTimeMs != null || processor.speed != null) {
                     long durationUs = audioTrackFormat.getLong(MediaFormat.KEY_DURATION);
-                    if (startTimeMs != null && endTimeMs != null) {
-                        durationUs = (endTimeMs - startTimeMs) * 1000;
+                    if (processor.startTimeMs != null && processor.endTimeMs != null) {
+                        durationUs = (processor.endTimeMs - processor.startTimeMs) * 1000;
                     }
-                    if (speed != null) {
-                        durationUs /= speed;
+                    if (processor.speed != null) {
+                        durationUs /= processor.speed;
                     }
                     audioTrackFormat.setLong(MediaFormat.KEY_DURATION, durationUs);
                 }
@@ -222,45 +213,45 @@ public class VideoProcessor {
                 long videoDurationUs = durationMs * 1000;
                 long audioDurationUs = audioTrackFormat.getLong(MediaFormat.KEY_DURATION);
 
-                if (startTimeMs != null || endTimeMs != null || speed != null) {
-                    if (startTimeMs != null && endTimeMs != null) {
-                        videoDurationUs = (endTimeMs - startTimeMs) * 1000;
+                if (processor.startTimeMs != null || processor.endTimeMs != null || processor.speed != null) {
+                    if (processor.startTimeMs != null && processor.endTimeMs != null) {
+                        videoDurationUs = (processor.endTimeMs - processor.startTimeMs) * 1000;
                     }
-                    if (speed != null) {
-                        videoDurationUs /= speed;
+                    if (processor.speed != null) {
+                        videoDurationUs /= processor.speed;
                     }
                     long avDurationUs = videoDurationUs < audioDurationUs ? videoDurationUs : audioDurationUs;
                     audioTrackFormat.setLong(MediaFormat.KEY_DURATION, avDurationUs);
-                    audioEndTimeMs = (startTimeMs == null ? 0 : startTimeMs) + (int) (avDurationUs / 1000);
+                    audioEndTimeMs = (processor.startTimeMs == null ? 0 : processor.startTimeMs) + (int) (avDurationUs / 1000);
                 }
             }
             muxerAudioTrackIndex = mediaMuxer.addTrack(audioTrackFormat);
         }
         extractor.selectTrack(videoIndex);
-        if (startTimeMs != null) {
-            extractor.seekTo(startTimeMs * 1000, MediaExtractor.SEEK_TO_PREVIOUS_SYNC);
+        if (processor.startTimeMs != null) {
+            extractor.seekTo(processor.startTimeMs * 1000, MediaExtractor.SEEK_TO_PREVIOUS_SYNC);
         } else {
             extractor.seekTo(0, MediaExtractor.SEEK_TO_PREVIOUS_SYNC);
         }
 
-        VideoProgressAve progressAve = new VideoProgressAve(listener);
-        progressAve.setSpeed(speed);
-        progressAve.setStartTimeMs(startTimeMs == null ? 0 : startTimeMs);
-        progressAve.setEndTimeMs(endTimeMs == null ? durationMs : endTimeMs);
+        VideoProgressAve progressAve = new VideoProgressAve(processor.listener);
+        progressAve.setSpeed(processor.speed);
+        progressAve.setStartTimeMs(processor.startTimeMs == null ? 0 : processor.startTimeMs);
+        progressAve.setEndTimeMs(processor.endTimeMs == null ? durationMs : processor.endTimeMs);
         AtomicBoolean decodeDone = new AtomicBoolean(false);
         CountDownLatch muxerStartLatch = new CountDownLatch(1);
-        VideoEncodeThread encodeThread = new VideoEncodeThread(extractor, mediaMuxer, bitrate,
-                resultWidth, resultHeight, iFrameInterval, frameRate == null ? DEFAULT_FRAME_RATE : frameRate, videoIndex,
+        VideoEncodeThread encodeThread = new VideoEncodeThread(extractor, mediaMuxer,processor.bitrate,
+                resultWidth, resultHeight, processor.iFrameInterval, processor.frameRate == null ? DEFAULT_FRAME_RATE : processor.frameRate, videoIndex,
                 decodeDone, muxerStartLatch);
-        int srcFrameRate = VideoUtil.getFrameRate(input);
+        int srcFrameRate = VideoUtil.getFrameRate(processor.input);
         if (srcFrameRate <= 0) {
-            srcFrameRate = (int) Math.ceil(VideoUtil.getAveFrameRate(input));
+            srcFrameRate = (int) Math.ceil(VideoUtil.getAveFrameRate(processor.input));
         }
-        VideoDecodeThread decodeThread = new VideoDecodeThread(encodeThread, extractor, startTimeMs, endTimeMs, srcFrameRate,
-                frameRate == null ? DEFAULT_FRAME_RATE : frameRate, speed, videoIndex, decodeDone);
+        VideoDecodeThread decodeThread = new VideoDecodeThread(encodeThread, extractor, processor.startTimeMs, processor.endTimeMs, srcFrameRate,
+                processor.frameRate == null ? DEFAULT_FRAME_RATE : processor.frameRate, processor.speed, processor.dropFrames, videoIndex, decodeDone);
 
-        AudioProcessThread audioProcessThread = new AudioProcessThread(context, input, mediaMuxer, startTimeMs, audioEndTimeMs,
-                shouldChangeAudioSpeed ? speed : null, muxerAudioTrackIndex, muxerStartLatch);
+        AudioProcessThread audioProcessThread = new AudioProcessThread(context, processor.input, mediaMuxer, processor.startTimeMs, audioEndTimeMs,
+                shouldChangeAudioSpeed ? processor.speed : null, muxerAudioTrackIndex, muxerStartLatch);
         encodeThread.setProgressAve(progressAve);
         audioProcessThread.setProgressAve(progressAve);
         decodeThread.start();
@@ -1005,6 +996,10 @@ public class VideoProcessor {
         private Integer iFrameInterval;
         @Nullable
         private VideoProgressListener listener;
+        /**
+         * 帧率超过指定帧率时是否丢帧
+         */
+        private boolean dropFrames = true;
 
         public Processor(Context context) {
             this.context = context;
@@ -1065,13 +1060,21 @@ public class VideoProcessor {
             return this;
         }
 
+        /**
+         * 帧率超过指定帧率时是否丢帧,默认为true
+         */
+        public Processor dropFrames(boolean dropFrames) {
+            this.dropFrames = dropFrames;
+            return this;
+        }
+
         public Processor progressListener(VideoProgressListener listener) {
             this.listener = listener;
             return this;
         }
 
         public void process() throws Exception {
-            processVideo(context, input, output, outWidth, outHeight, startTimeMs, endTimeMs, speed, changeAudioSpeed, bitrate, frameRate, iFrameInterval, listener);
+            processVideo(context, this);
         }
     }
 }

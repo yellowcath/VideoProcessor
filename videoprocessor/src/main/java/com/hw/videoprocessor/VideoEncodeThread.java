@@ -15,7 +15,6 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import static com.hw.videoprocessor.VideoProcessor.DEFAULT_FRAME_RATE;
-import static com.hw.videoprocessor.VideoProcessor.MIME_TYPE;
 import static com.hw.videoprocessor.VideoProcessor.TIMEOUT_USEC;
 
 /**
@@ -40,7 +39,6 @@ public class VideoEncodeThread extends Thread implements IVideoEncodeThread {
     private volatile CountDownLatch mEglContextLatch;
     private volatile Surface mSurface;
     private VideoProgressAve mProgressAve;
-
 
     public VideoEncodeThread(MediaExtractor extractor, MediaMuxer muxer,
                              int bitrate, int resultWidth, int resultHeight, int iFrameInterval,
@@ -90,23 +88,24 @@ public class VideoEncodeThread extends Thread implements IVideoEncodeThread {
         } else {
             frameRate = inputFormat.containsKey(MediaFormat.KEY_FRAME_RATE) ? inputFormat.getInteger(inputFormat.KEY_FRAME_RATE) : DEFAULT_FRAME_RATE;
         }
-        MediaFormat outputFormat = MediaFormat.createVideoFormat(MIME_TYPE, mResultWidth, mResultHeight);
+        String mimeType = VideoProcessor.OUTPUT_MIME_TYPE;
+        MediaFormat outputFormat = MediaFormat.createVideoFormat(mimeType, mResultWidth, mResultHeight);
         outputFormat.setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface);
         outputFormat.setInteger(MediaFormat.KEY_FRAME_RATE, frameRate);
         outputFormat.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, mIFrameInterval);
 
-        mEncoder = MediaCodec.createEncoderByType(MIME_TYPE);
-        boolean supportProfileHigh = VideoUtil.trySetProfileAndLevel(mEncoder, MIME_TYPE, outputFormat,
+        mEncoder = MediaCodec.createEncoderByType(mimeType);
+        boolean supportProfileHigh = VideoUtil.trySetProfileAndLevel(mEncoder, mimeType, outputFormat,
                 MediaCodecInfo.CodecProfileLevel.AVCProfileHigh,
                 MediaCodecInfo.CodecProfileLevel.AVCLevel31
         );
         if (supportProfileHigh) {
             CL.i("supportProfileHigh,enable ProfileHigh");
         }
-        int maxBitrate = VideoUtil.getMaxSupportBitrate(mEncoder, MIME_TYPE);
+        int maxBitrate = VideoUtil.getMaxSupportBitrate(mEncoder,mimeType);
         if (maxBitrate > 0 && mBitrate > maxBitrate) {
             CL.e(mBitrate + " bitrate too large,set to:" + maxBitrate);
-            mBitrate = (int) (maxBitrate*0.8f);//直接设置最大值小米2报错
+            mBitrate = (int) (maxBitrate * 0.8f);//直接设置最大值小米2报错
         }
         outputFormat.setInteger(MediaFormat.KEY_BIT_RATE, mBitrate);
         mEncoder.configure(outputFormat, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE);

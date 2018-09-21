@@ -14,7 +14,6 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import static com.hw.videoprocessor.VideoProcessor.DEFAULT_FRAME_RATE;
-import static com.hw.videoprocessor.VideoProcessor.MIME_TYPE;
 import static com.hw.videoprocessor.VideoProcessor.TIMEOUT_USEC;
 
 /**
@@ -84,13 +83,13 @@ public class VideoAppendEncodeThread extends Thread implements IVideoEncodeThrea
         MediaFormat inputFormat = mExtractor.getTrackFormat(mVideoIndex);
         //初始化编码器
         int frameRate = inputFormat.containsKey(MediaFormat.KEY_FRAME_RATE) ? inputFormat.getInteger(inputFormat.KEY_FRAME_RATE) : DEFAULT_FRAME_RATE;
-        MediaFormat outputFormat = MediaFormat.createVideoFormat(MIME_TYPE, mResultWidth, mResultHeight);
+        MediaFormat outputFormat = MediaFormat.createVideoFormat(VideoProcessor.OUTPUT_MIME_TYPE, mResultWidth, mResultHeight);
         outputFormat.setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface);
         outputFormat.setInteger(MediaFormat.KEY_BIT_RATE, mBitrate);
         outputFormat.setInteger(MediaFormat.KEY_FRAME_RATE, frameRate);
         outputFormat.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, mIFrameInterval);
 
-        mEncoder = MediaCodec.createEncoderByType(MIME_TYPE);
+        mEncoder = MediaCodec.createEncoderByType(VideoProcessor.OUTPUT_MIME_TYPE);
         mEncoder.configure(outputFormat, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE);
         mSurface = mEncoder.createInputSurface();
 

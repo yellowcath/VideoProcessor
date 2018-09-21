@@ -2,6 +2,7 @@ package com.hw.videoprocessor;
 
 import android.content.Context;
 import android.media.MediaExtractor;
+import android.media.MediaFormat;
 import android.media.MediaMuxer;
 import android.support.annotation.Nullable;
 import com.hw.videoprocessor.util.AudioUtil;
@@ -68,6 +69,9 @@ public class AudioProcessThread extends Thread implements VideoProgressListener 
         if (audioTrackIndex >= 0) {
             //处理音频
             mExtractor.selectTrack(audioTrackIndex);
+            MediaFormat mediaFormat = mExtractor.getTrackFormat(audioTrackIndex);
+            String inputMimeType = mediaFormat.containsKey(MediaFormat.KEY_MIME)?mediaFormat.getString(MediaFormat.KEY_MIME):MediaFormat.MIMETYPE_AUDIO_AAC;
+            String outputMimeType = MediaFormat.MIMETYPE_AUDIO_AAC;
             //音频暂不支持变速
             Integer startTimeUs = mStartTimeMs == null ? null : mStartTimeMs * 1000;
             Integer endTimeUs = mEndTimeMs == null ? null : mEndTimeMs * 1000;
@@ -75,8 +79,9 @@ public class AudioProcessThread extends Thread implements VideoProgressListener 
             if (!await) {
                 throw new TimeoutException("wait muxerStartLatch timeout!");
             }
-            if (mSpeed != null) {
-                AudioUtil.writeAudioTrackDecode(mContext, mExtractor, mMuxer, mMuxerAudioTrackIndex, startTimeUs, endTimeUs, mSpeed, this);
+            if (mSpeed != null || !inputMimeType.equals(outputMimeType)) {
+                AudioUtil.writeAudioTrackDecode(mContext, mExtractor, mMuxer, mMuxerAudioTrackIndex, startTimeUs, endTimeUs,
+                        mSpeed==null?1f:mSpeed, this);
             } else {
                 AudioUtil.writeAudioTrack(mExtractor, mMuxer, mMuxerAudioTrackIndex, startTimeUs, endTimeUs, this);
             }

@@ -186,7 +186,7 @@ public class VideoUtil {
                 decodeDone, baseMuxerFrameTimeUs, isFirst, isLast, muxerVideoTrackIndex);
         VideoDecodeThread decodeThread = new VideoDecodeThread(encodeThread, extractor, startTimeUs == null ? null : startTimeUs / 1000,
                 endTimeUs == null ? null : endTimeUs / 1000,
-                null, null, null, videoTrack, decodeDone);
+                null, null, null, false,videoTrack, decodeDone);
         decodeThread.start();
         encodeThread.start();
         try {

@@ -6,8 +6,10 @@ import android.media.MediaFormat;
 import android.support.test.InstrumentationRegistry;
 import android.support.test.runner.AndroidJUnit4;
 import android.util.Log;
+import com.hw.videoprocessor.VideoProcessor;
 import com.hw.videoprocessor.VideoUtil;
 import com.hw.videoprocessor.util.AudioUtil;
+import com.hw.videoprocessor.util.VideoProgressListener;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
@@ -39,13 +41,19 @@ public class AacTest {
     @Test
     public void test2() throws Exception {
         Context context = InstrumentationRegistry.getTargetContext();
-        File videoFile = new File("/mnt/sdcard/DCIM/Camera/C360VID_20180511_110355.mp4");
-        File aacFile = new File("/mnt/sdcard/test.aac");
-        File outFile = new File("/mnt/sdcard/test.mp4");
-        outFile.delete();
-
+        File videoFile = new File("/mnt/sdcard/DCIM/Camera/VID_20180921_121547.mp4");
+        File outFile = new File("/mnt/sdcard/amr.mp4");
         long s = System.currentTimeMillis();
-        AudioUtil.replaceAudioTrack(videoFile.getAbsolutePath(), aacFile.getAbsolutePath(), outFile.getAbsolutePath(), true);
+        VideoProcessor.processor(context)
+                .input(videoFile.getAbsolutePath())
+                .output(outFile.getAbsolutePath())
+                .progressListener(new VideoProgressListener() {
+                    @Override
+                    public void onProgress(float progress) {
+
+                    }
+                })
+                .process();
         long e = System.currentTimeMillis();
         Log.e("hwLog", "time:" + (e - s) + "ms");
     }
