@@ -103,6 +103,10 @@ public class VideoAppendEncodeThread extends Thread implements IVideoEncodeThrea
         int encodeTryAgainCount = 0;
         //开始编码
         //输出
+        ByteBuffer[] outputBuffers = null;
+        if (!ApiHelper.AFTER_LOLLIPOP) {
+            outputBuffers = mEncoder.getOutputBuffers();
+        }
         while (true) {
             if (mDecodeDone.get() && !signalEncodeEnd) {
                 signalEncodeEnd = true;
@@ -130,7 +134,12 @@ public class VideoAppendEncodeThread extends Thread implements IVideoEncodeThrea
                 CL.e("unexpected result from decoder.dequeueOutputBuffer: " + outputBufferIndex);
             } else {
                 //编码数据可用
-                ByteBuffer outputBuffer = mEncoder.getOutputBuffer(outputBufferIndex);
+                ByteBuffer outputBuffer;
+                if (ApiHelper.AFTER_LOLLIPOP) {
+                    outputBuffer = mEncoder.getOutputBuffer(outputBufferIndex);
+                } else {
+                    outputBuffer = outputBuffers[outputBufferIndex];
+                }
                 info.presentationTimeUs += mBaseMuxerFrameTimeUs;
                 if (!mIsFirst && info.flags == MediaCodec.BUFFER_FLAG_CODEC_CONFIG) {
                     //非第一个片段跳过写入Config

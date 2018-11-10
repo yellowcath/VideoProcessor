@@ -129,16 +129,27 @@ public class VideoProcessor {
                             .iFrameInterval(0)
                             .progressListener(stepProgress)
                             .process();
-                } catch (MediaCodec.CodecException e) {
+                } catch (Exception e) {
+                    //MediaCodec.CodecException
+                    boolean tryAgain = true;
                     CL.e(e);
                     /** Nexus5上-1代表全关键帧*/
-                    processor(context)
-                            .input(input)
-                            .output(tempFile.getAbsolutePath())
-                            .bitrate((int) (oriBitrate * bitrateMultiple))
-                            .iFrameInterval(-1)
-                            .progressListener(stepProgress)
-                            .process();
+                    if(ApiHelper.AFTER_LOLLIPOP) {
+                        if(e instanceof MediaCodec.CodecException) {
+                            tryAgain = true;
+                        }else{
+                            tryAgain = false;
+                        }
+                    }
+                    if(tryAgain){
+                        processor(context)
+                                .input(input)
+                                .output(tempFile.getAbsolutePath())
+                                .bitrate((int) (oriBitrate * bitrateMultiple))
+                                .iFrameInterval(-1)
+                                .progressListener(stepProgress)
+                                .process();
+                    }
                 }
                 stepProgress.setCurrentStep(1);
                 reverseVideoNoDecode(tempFile.getAbsolutePath(), temp2File.getAbsolutePath(), reverseAudio, null, stepProgress);
@@ -534,6 +545,11 @@ public class VideoProcessor {
         final int AAC_FRAME_TIME_US = 1024 * 1000 * 1000 / sampleRate;
         boolean detectTimeError = false;
         try {
+            ByteBuffer[] inputBuffers=null,outputBuffers=null;
+            if(!ApiHelper.AFTER_LOLLIPOP){
+                inputBuffers = encoder.getInputBuffers();
+                outputBuffers = encoder.getOutputBuffers();
+            }
             while (!encodeDone) {
                 int inputBufferIndex = encoder.dequeueInputBuffer(TIMEOUT_US);
                 if (!encodeInputDone && inputBufferIndex >= 0) {
@@ -545,7 +561,12 @@ public class VideoProcessor {
                         int flags = pcmExtrator.getSampleFlags();
                         buffer.clear();
                         int size = pcmExtrator.readSampleData(buffer, 0);
-                        ByteBuffer inputBuffer = encoder.getInputBuffer(inputBufferIndex);
+                        ByteBuffer inputBuffer;
+                        if (ApiHelper.AFTER_LOLLIPOP) {
+                            inputBuffer = encoder.getInputBuffer(inputBufferIndex);
+                        } else {
+                            inputBuffer = inputBuffers[inputBufferIndex];
+                        }
                         inputBuffer.clear();
                         inputBuffer.put(buffer);
                         inputBuffer.position(0);
@@ -570,7 +591,12 @@ public class VideoProcessor {
                             encodeDone = true;
                             break;
                         }
-                        ByteBuffer encodeOutputBuffer = encoder.getOutputBuffer(outputBufferIndex);
+                        ByteBuffer encodeOutputBuffer;
+                        if (ApiHelper.AFTER_LOLLIPOP) {
+                            encodeOutputBuffer = encoder.getOutputBuffer(outputBufferIndex);
+                        } else {
+                            encodeOutputBuffer = outputBuffers[outputBufferIndex];
+                        }
                         CL.it(TAG, "audio writeSampleData " + info.presentationTimeUs + " size:" + info.size + " flags:" + info.flags);
                         if (!detectTimeError && lastAudioFrameTimeUs != -1 && info.presentationTimeUs < lastAudioFrameTimeUs + AAC_FRAME_TIME_US) {
                             //某些情况下帧时间会出错，目前未找到原因（系统相机录得双声道视频正常，我录的单声道视频不正常）
@@ -860,6 +886,11 @@ public class VideoProcessor {
         final int AAC_FRAME_TIME_US = 1024 * 1000 * 1000 / sampleRate;
         boolean detectTimeError = false;
         try {
+            ByteBuffer[] inputBuffers = null,outputBuffers = null;
+            if(!ApiHelper.AFTER_LOLLIPOP){
+                inputBuffers = encoder.getInputBuffers();
+                outputBuffers = encoder.getOutputBuffers();
+            }
             while (!encodeDone) {
                 int inputBufferIndex = encoder.dequeueInputBuffer(TIMEOUT_US);
                 if (!encodeInputDone && inputBufferIndex >= 0) {
@@ -871,7 +902,12 @@ public class VideoProcessor {
                         int flags = pcmExtrator.getSampleFlags();
                         buffer.clear();
                         int size = pcmExtrator.readSampleData(buffer, 0);
-                        ByteBuffer inputBuffer = encoder.getInputBuffer(inputBufferIndex);
+                        ByteBuffer inputBuffer;
+                        if (ApiHelper.AFTER_LOLLIPOP) {
+                            inputBuffer = encoder.getInputBuffer(inputBufferIndex);
+                        } else {
+                            inputBuffer = inputBuffers[inputBufferIndex];
+                        }
                         inputBuffer.clear();
                         inputBuffer.put(buffer);
                         inputBuffer.position(0);
@@ -896,7 +932,12 @@ public class VideoProcessor {
                             encodeDone = true;
                             break;
                         }
-                        ByteBuffer encodeOutputBuffer = encoder.getOutputBuffer(outputBufferIndex);
+                        ByteBuffer encodeOutputBuffer;
+                        if (ApiHelper.AFTER_LOLLIPOP) {
+                            encodeOutputBuffer = encoder.getOutputBuffer(outputBufferIndex);
+                        }else{
+                            encodeOutputBuffer = outputBuffers[outputBufferIndex];
+                        }
                         CL.it(TAG, "audio writeSampleData " + info.presentationTimeUs + " size:" + info.size + " flags:" + info.flags);
                         if (!detectTimeError && lastAudioFrameTimeUs != -1 && info.presentationTimeUs < lastAudioFrameTimeUs + AAC_FRAME_TIME_US) {
                             //某些情况下帧时间会出错，目前未找到原因（系统相机录得双声道视频正常，我录的单声道视频不正常）

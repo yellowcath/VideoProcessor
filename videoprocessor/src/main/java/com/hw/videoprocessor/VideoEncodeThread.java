@@ -125,6 +125,10 @@ public class VideoEncodeThread extends Thread implements IVideoEncodeThread {
         long lastVideoFrameTimeUs = -1;
         //开始编码
         //输出
+        ByteBuffer[] outputBuffers = null;
+        if(!ApiHelper.AFTER_LOLLIPOP) {
+            outputBuffers = mEncoder.getOutputBuffers();
+        }
         while (true) {
             if (mDecodeDone.get() && !signalEncodeEnd) {
                 signalEncodeEnd = true;
@@ -157,7 +161,12 @@ public class VideoEncodeThread extends Thread implements IVideoEncodeThread {
                 CL.e("unexpected result from decoder.dequeueOutputBuffer: " + outputBufferIndex);
             } else {
                 //编码数据可用
-                ByteBuffer outputBuffer = mEncoder.getOutputBuffer(outputBufferIndex);
+                ByteBuffer outputBuffer;
+                if(ApiHelper.AFTER_LOLLIPOP){
+                    outputBuffer = mEncoder.getOutputBuffer(outputBufferIndex);
+                }else{
+                    outputBuffer = outputBuffers[outputBufferIndex];
+                }
                 if (info.flags == MediaCodec.BUFFER_FLAG_END_OF_STREAM && info.presentationTimeUs < 0) {
                     info.presentationTimeUs = 0;
                 }

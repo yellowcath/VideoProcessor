@@ -33,7 +33,8 @@ public class VideoEffects {
         try {
             CL.w("切割视频+");
             fileList = VideoUtil.splitVideo(context, inputVideo, cacheDir.getAbsolutePath(), splitTimeMs, 500, bitrate, speed, 0);
-        } catch (MediaCodec.CodecException e) {
+        } catch (Exception e) {
+            //MediaCodec.CodecException
             CL.e(e);
             /** Nexus5上-1代表全关键帧*/
             fileList = VideoUtil.splitVideo(context, inputVideo, cacheDir.getAbsolutePath(), splitTimeMs, 500, bitrate, speed, -1);

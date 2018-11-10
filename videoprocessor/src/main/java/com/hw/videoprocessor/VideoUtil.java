@@ -346,7 +346,12 @@ public class VideoUtil {
         try {
             MediaCodecInfo codecInfo = codec.getCodecInfo();
             MediaCodecInfo.CodecCapabilities capabilities = codecInfo.getCapabilitiesForType(mime);
-            Integer maxBitrate = capabilities.getVideoCapabilities().getBitrateRange().getUpper();
+            Integer maxBitrate;
+            if (ApiHelper.AFTER_LOLLIPOP) {
+                maxBitrate = capabilities.getVideoCapabilities().getBitrateRange().getUpper();
+            } else {
+                maxBitrate = 40000000;
+            }
             return maxBitrate;
         } catch (Exception e) {
             CL.e(e);

@@ -131,6 +131,10 @@ public class VideoDecodeThread extends Thread {
         long videoStartTimeUs = -1;
         int decodeTryAgainCount = 0;
 
+        ByteBuffer[] inputBuffers = null;
+        if(!ApiHelper.AFTER_LOLLIPOP) {
+            inputBuffers = mDecoder.getInputBuffers();
+        }
         while (!decoderDone) {
             //还有帧数据，输入解码器
             if (!inputDone) {
@@ -139,7 +143,12 @@ public class VideoDecodeThread extends Thread {
                 if (index == mVideoIndex) {
                     int inputBufIndex = mDecoder.dequeueInputBuffer(TIMEOUT_USEC);
                     if (inputBufIndex >= 0) {
-                        ByteBuffer inputBuf = mDecoder.getInputBuffer(inputBufIndex);
+                        ByteBuffer inputBuf;
+                        if(ApiHelper.AFTER_LOLLIPOP){
+                            inputBuf = mDecoder.getInputBuffer(inputBufIndex);
+                        }else{
+                            inputBuf = inputBuffers[inputBufIndex];
+                        }
                         int chunkSize = mExtractor.readSampleData(inputBuf, 0);
                         if (chunkSize < 0) {
                             mDecoder.queueInputBuffer(inputBufIndex, 0, 0, 0L, MediaCodec.BUFFER_FLAG_END_OF_STREAM);

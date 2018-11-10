@@ -11,6 +11,7 @@ import android.support.annotation.IntRange;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
 import android.util.Pair;
+import com.hw.videoprocessor.ApiHelper;
 import com.hw.videoprocessor.VideoProcessor;
 import com.hw.videoprocessor.VideoUtil;
 import com.hw.videoprocessor.jssrc.SSRC;
@@ -377,6 +378,10 @@ public class AudioUtil {
         File pcmFile = new File(outPath);
         FileChannel writeChannel = new FileOutputStream(pcmFile).getChannel();
         try {
+            ByteBuffer[] inputBuffers = null;
+            if(!ApiHelper.AFTER_LOLLIPOP){
+                inputBuffers = decoder.getInputBuffers();
+            }
             while (!decodeDone) {
                 if (!decodeInputDone) {
                     boolean eof = false;
@@ -399,7 +404,12 @@ public class AudioUtil {
                             info.size = extractor.readSampleData(buffer, 0);
                             info.presentationTimeUs = sampleTimeUs;
                             info.flags = extractor.getSampleFlags();
-                            ByteBuffer inputBuffer = decoder.getInputBuffer(decodeInputIndex);
+                            ByteBuffer inputBuffer;
+                            if(ApiHelper.AFTER_LOLLIPOP) {
+                                inputBuffer = decoder.getInputBuffer(decodeInputIndex);
+                            }else{
+                                inputBuffer = inputBuffers[decodeInputIndex];
+                            }
                             inputBuffer.put(buffer);
                             CL.it(TAG, "audio decode queueInputBuffer " + info.presentationTimeUs / 1000);
                             decoder.queueInputBuffer(decodeInputIndex, 0, info.size, info.presentationTimeUs, info.flags);
@@ -409,6 +419,10 @@ public class AudioUtil {
                     }
                 }
 
+                ByteBuffer[] outputBuffers = null;
+                if(!ApiHelper.AFTER_LOLLIPOP) {
+                    outputBuffers = decoder.getOutputBuffers();
+                }
                 while (!decodeDone) {
                     int outputBufferIndex = decoder.dequeueOutputBuffer(info, TIMEOUT_US);
                     if (outputBufferIndex == MediaCodec.INFO_TRY_AGAIN_LATER) {
@@ -423,7 +437,12 @@ public class AudioUtil {
                         if (info.flags == MediaCodec.BUFFER_FLAG_END_OF_STREAM) {
                             decodeDone = true;
                         } else {
-                            ByteBuffer decodeOutputBuffer = decoder.getOutputBuffer(outputBufferIndex);
+                            ByteBuffer decodeOutputBuffer;
+                            if(ApiHelper.AFTER_LOLLIPOP) {
+                                decodeOutputBuffer = decoder.getOutputBuffer(outputBufferIndex);
+                            }else{
+                                decodeOutputBuffer = outputBuffers[outputBufferIndex];
+                            }
                             CL.it(TAG, "audio decode saveFrame " + info.presentationTimeUs / 1000);
                             writeChannel.write(decodeOutputBuffer);
                         }
@@ -484,6 +503,10 @@ public class AudioUtil {
         mediaMuxer.start();
         try {
             boolean encodeDone = false;
+            ByteBuffer[] inputBuffers = null;
+            if (!ApiHelper.AFTER_LOLLIPOP) {
+                inputBuffers = encoder.getInputBuffers();
+            }
             while (!encodeDone) {
                 int inputBufferIndex = encoder.dequeueInputBuffer(TIMEOUT_US);
                 if (!encodeInputDone && inputBufferIndex >= 0) {
@@ -495,7 +518,12 @@ public class AudioUtil {
                         int flags = wavExtrator.getSampleFlags();
                         buffer.clear();
                         int size = wavExtrator.readSampleData(buffer, 0);
-                        ByteBuffer inputBuffer = encoder.getInputBuffer(inputBufferIndex);
+                        ByteBuffer inputBuffer;
+                        if (ApiHelper.AFTER_LOLLIPOP) {
+                            inputBuffer = encoder.getInputBuffer(inputBufferIndex);
+                        } else {
+                            inputBuffer = inputBuffers[inputBufferIndex];
+                        }
                         inputBuffer.clear();
                         inputBuffer.put(buffer);
                         inputBuffer.position(0);
@@ -505,6 +533,10 @@ public class AudioUtil {
                     }
                 }
 
+                ByteBuffer[] outputBuffers = null;
+                if (!ApiHelper.AFTER_LOLLIPOP) {
+                    outputBuffers = encoder.getOutputBuffers();
+                }
                 while (true) {
                     int outputBufferIndex = encoder.dequeueOutputBuffer(info, TIMEOUT_US);
                     if (outputBufferIndex == MediaCodec.INFO_TRY_AGAIN_LATER) {
@@ -520,7 +552,12 @@ public class AudioUtil {
                             encodeDone = true;
                             break;
                         }
-                        ByteBuffer encodeOutputBuffer = encoder.getOutputBuffer(outputBufferIndex);
+                        ByteBuffer encodeOutputBuffer;
+                        if (ApiHelper.AFTER_LOLLIPOP) {
+                            encodeOutputBuffer = encoder.getOutputBuffer(outputBufferIndex);
+                        } else {
+                            encodeOutputBuffer = outputBuffers[outputBufferIndex];
+                        }
                         CL.i("audio writeSampleData " + info.presentationTimeUs + " size:" + info.size + " flags:" + info.flags);
                         if (!detectTimeError && lastAudioFrameTimeUs != -1 && info.presentationTimeUs < lastAudioFrameTimeUs + AAC_FRAME_TIME_US) {
                             //某些情况下帧时间会出错，目前未找到原因（系统相机录得双声道视频正常，我录的单声道视频不正常）
@@ -684,6 +721,12 @@ public class AudioUtil {
         File pcmFile = new File(context.getCacheDir(), System.currentTimeMillis() + ".pcm");
         FileChannel writeChannel = new FileOutputStream(pcmFile).getChannel();
         try {
+            ByteBuffer[] inputBuffers = null;
+            ByteBuffer[] outputBuffers = null;
+            if (!ApiHelper.AFTER_LOLLIPOP) {
+                inputBuffers = decoder.getInputBuffers();
+                outputBuffers = decoder.getOutputBuffers();
+            }
             while (!decodeDone) {
                 if (!decodeInputDone) {
                     boolean eof = false;
@@ -706,7 +749,12 @@ public class AudioUtil {
                             info.size = extractor.readSampleData(buffer, 0);
                             info.presentationTimeUs = sampleTimeUs;
                             info.flags = extractor.getSampleFlags();
-                            ByteBuffer inputBuffer = decoder.getInputBuffer(decodeInputIndex);
+                            ByteBuffer inputBuffer;
+                            if (ApiHelper.AFTER_LOLLIPOP) {
+                                inputBuffer = decoder.getInputBuffer(decodeInputIndex);
+                            } else {
+                                inputBuffer = inputBuffers[decodeInputIndex];
+                            }
                             inputBuffer.put(buffer);
                             CL.i("audio decode queueInputBuffer " + info.presentationTimeUs / 1000);
                             decoder.queueInputBuffer(decodeInputIndex, 0, info.size, info.presentationTimeUs, info.flags);
@@ -730,7 +778,12 @@ public class AudioUtil {
                         if (info.flags == MediaCodec.BUFFER_FLAG_END_OF_STREAM) {
                             decodeDone = true;
                         } else {
-                            ByteBuffer decodeOutputBuffer = decoder.getOutputBuffer(outputBufferIndex);
+                            ByteBuffer decodeOutputBuffer;
+                            if (ApiHelper.AFTER_LOLLIPOP) {
+                                decodeOutputBuffer = decoder.getOutputBuffer(outputBufferIndex);
+                            } else {
+                                decodeOutputBuffer = outputBuffers[outputBufferIndex];
+                            }
                             CL.i("audio decode saveFrame " + info.presentationTimeUs / 1000);
                             writeChannel.write(decodeOutputBuffer);
                             if (listener != null) {
@@ -796,6 +849,12 @@ public class AudioUtil {
         final int AAC_FRAME_TIME_US = 1024 * 1000 * 1000 / sampleRate;
         boolean detectTimeError = false;
         try {
+            ByteBuffer[] inputBuffers = null;
+            ByteBuffer[] outputBuffers = null;
+            if (!ApiHelper.AFTER_LOLLIPOP) {
+                inputBuffers = encoder.getInputBuffers();
+                outputBuffers = encoder.getOutputBuffers();
+            }
             while (!encodeDone) {
                 int inputBufferIndex = encoder.dequeueInputBuffer(TIMEOUT_US);
                 if (!encodeInputDone && inputBufferIndex >= 0) {
@@ -807,7 +866,12 @@ public class AudioUtil {
                         int flags = pcmExtrator.getSampleFlags();
                         buffer.clear();
                         int size = pcmExtrator.readSampleData(buffer, 0);
-                        ByteBuffer inputBuffer = encoder.getInputBuffer(inputBufferIndex);
+                        ByteBuffer inputBuffer;
+                        if (ApiHelper.AFTER_LOLLIPOP) {
+                            inputBuffer = encoder.getInputBuffer(inputBufferIndex);
+                        } else {
+                            inputBuffer = inputBuffers[inputBufferIndex];
+                        }
                         inputBuffer.clear();
                         inputBuffer.put(buffer);
                         inputBuffer.position(0);
@@ -832,7 +896,12 @@ public class AudioUtil {
                             encodeDone = true;
                             break;
                         }
-                        ByteBuffer encodeOutputBuffer = encoder.getOutputBuffer(outputBufferIndex);
+                        ByteBuffer encodeOutputBuffer;
+                        if (ApiHelper.AFTER_LOLLIPOP) {
+                            encodeOutputBuffer = encoder.getOutputBuffer(outputBufferIndex);
+                        } else {
+                            encodeOutputBuffer = outputBuffers[outputBufferIndex];
+                        }
                         CL.i("audio writeSampleData " + info.presentationTimeUs + " size:" + info.size + " flags:" + info.flags);
                         if (!detectTimeError && lastAudioFrameTimeUs != -1 && info.presentationTimeUs < lastAudioFrameTimeUs + AAC_FRAME_TIME_US) {
                             //某些情况下帧时间会出错，目前未找到原因（系统相机录得双声道视频正常，我录的单声道视频不正常）
