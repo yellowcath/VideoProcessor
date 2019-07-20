@@ -14,6 +14,8 @@ import android.widget.TextView;
 import android.widget.VideoView;
 import com.hw.videoprocessor.VideoUtil;
 
+import java.util.Locale;
+
 /**
  * Created by Bhuvnesh on 08-03-2017.
  */
@@ -47,11 +49,12 @@ public class PreviewActivity extends AppCompatActivity {
             extractor.setDataSource(filePath);
             MediaFormat format = extractor.getTrackFormat(VideoUtil.selectTrack(extractor, false));
             int frameRate = format.containsKey(MediaFormat.KEY_FRAME_RATE) ? format.getInteger(MediaFormat.KEY_FRAME_RATE) : -1;
+            float aveFrameRate = VideoUtil.getAveFrameRate(filePath);
             int width = format.getInteger(MediaFormat.KEY_WIDTH);
             int height = format.getInteger(MediaFormat.KEY_HEIGHT);
             int rotation = format.containsKey(MediaFormat.KEY_ROTATION) ? format.getInteger(MediaFormat.KEY_ROTATION) : -1;
             long duration = format.containsKey(MediaFormat.KEY_DURATION) ? format.getLong(MediaFormat.KEY_DURATION) : -1;
-            videoInfo = String.format("size:%dX%d,framerate:%d,rotation:%d,bitrate:%d,duration:%.1fs", width, height, frameRate, rotation, bitrate,
+            videoInfo = String.format(Locale.ENGLISH,"size:%dX%d,framerate:%d,aveFrameRate:%f,rotation:%d,bitrate:%d,duration:%.1fs", width, height, frameRate,aveFrameRate, rotation, bitrate,
                     duration / 1000f / 1000f);
             extractor.release();
         } catch (Exception e) {
