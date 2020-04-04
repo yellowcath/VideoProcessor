@@ -242,6 +242,7 @@ public class VideoDecodeThread extends Thread {
                 }
             }
         }
+        CL.i("Video Decode Done!");
         mDecodeDone.set(true);
     }
 

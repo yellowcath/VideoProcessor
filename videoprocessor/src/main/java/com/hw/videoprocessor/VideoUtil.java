@@ -1,5 +1,7 @@
 package com.hw.videoprocessor;
 
+import android.content.ContentResolver;
+import android.content.ContentValues;
 import android.content.Context;
 import android.media.MediaCodec;
 import android.media.MediaCodecInfo;
@@ -7,12 +9,19 @@ import android.media.MediaExtractor;
 import android.media.MediaFormat;
 import android.media.MediaMetadataRetriever;
 import android.media.MediaMuxer;
+import android.net.Uri;
+import android.os.Build;
+import android.os.ParcelFileDescriptor;
+import android.provider.MediaStore;
 import android.util.Pair;
 import com.hw.videoprocessor.util.AudioUtil;
 import com.hw.videoprocessor.util.CL;
 
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.List;
@@ -31,12 +40,12 @@ public class VideoUtil {
      * @param minSliceSize 如果最后一个片段小于一定值,就合并到前一个片段
      * @return
      */
-    public static List<File> splitVideo(Context context, String inputVideo, String outputDir,
+    public static List<File> splitVideo(Context context, VideoProcessor.MediaSource inputVideo, String outputDir,
                                         int splitTimeMs, int minSliceSize,
                                         Integer bitrate, float speed, Integer iFrameInterval) throws Exception {
         splitTimeMs *= speed;
         MediaMetadataRetriever retriever = new MediaMetadataRetriever();
-        retriever.setDataSource(inputVideo);
+        inputVideo.setDataSource(retriever);
         int durationMs = Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION));
         int remainTimeMs = durationMs;
         List<Pair<Integer, Integer>> sliceList = new LinkedList<>();
@@ -124,7 +133,7 @@ public class VideoUtil {
             //反序当前片段
             long s1 = System.currentTimeMillis();
             String out = inputVideos.get(i).getAbsolutePath() + ".rev";
-            VideoProcessor.reverseVideoNoDecode(inputVideos.get(i).getAbsolutePath(), out, true);
+            VideoProcessor.reverseVideoNoDecode(new VideoProcessor.MediaSource(inputVideos.get(i).getAbsolutePath()), out, true);
             long e1 = System.currentTimeMillis();
             CL.e("reverseVideoNoDecode:" + (e1 - s1) + "ms");
             //合并反序片段
@@ -214,9 +223,9 @@ public class VideoUtil {
      *
      * @return
      */
-    public static int getBitrateForAllKeyFrameVideo(String input) throws IOException {
+    public static int getBitrateForAllKeyFrameVideo(VideoProcessor.MediaSource input) throws IOException {
         MediaExtractor extractor = new MediaExtractor();
-        extractor.setDataSource(input);
+        input.setDataSource(extractor);
         int trackIndex = VideoUtil.selectTrack(extractor, false);
         extractor.selectTrack(trackIndex);
         int keyFrameCount = 0;
@@ -236,7 +245,7 @@ public class VideoUtil {
         extractor.release();
         float bitrateMultiple = (frameCount - keyFrameCount) / (float) keyFrameCount + 1;
         MediaMetadataRetriever retriever = new MediaMetadataRetriever();
-        retriever.setDataSource(input);
+        input.setDataSource(retriever);
         int oriBitrate = Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_BITRATE));
         retriever.release();
         if (frameCount == keyFrameCount) {
@@ -268,10 +277,10 @@ public class VideoUtil {
         return new Pair<>(keyFrameCount, frameCount);
     }
 
-    public static int getFrameRate(String videoPath) {
+    public static int getFrameRate(VideoProcessor.MediaSource mediaSource) {
         MediaExtractor extractor = new MediaExtractor();
         try {
-            extractor.setDataSource(videoPath);
+            mediaSource.setDataSource(extractor);
             int trackIndex = VideoUtil.selectTrack(extractor, false);
             MediaFormat format = extractor.getTrackFormat(trackIndex);
             return format.containsKey(MediaFormat.KEY_FRAME_RATE) ? format.getInteger(MediaFormat.KEY_FRAME_RATE) : -1;
@@ -283,9 +292,9 @@ public class VideoUtil {
         }
     }
 
-    public static float getAveFrameRate(String videoPath) throws IOException {
+    public static float getAveFrameRate(VideoProcessor.MediaSource mediaSource) throws IOException {
         MediaExtractor extractor = new MediaExtractor();
-        extractor.setDataSource(videoPath);
+        mediaSource.setDataSource(extractor);
         int trackIndex = VideoUtil.selectTrack(extractor, false);
         extractor.selectTrack(trackIndex);
         long lastSampleTimeUs = 0;
@@ -365,5 +374,58 @@ public class VideoUtil {
             extractor.advance();
         }
         return frameTimeStamps;
+    }
+
+    public static Pair<Integer,Integer> getVideoSize(VideoProcessor.MediaSource source) throws IOException {
+        MediaExtractor extractor = new MediaExtractor();
+        source.setDataSource(extractor);
+        MediaFormat format = extractor.getTrackFormat(VideoUtil.selectTrack(extractor, false));
+        int width = format.getInteger(MediaFormat.KEY_WIDTH);
+        int height = format.getInteger(MediaFormat.KEY_HEIGHT);
+        return new Pair<>(width,height);
+    }
+
+    /**
+     * 保存文件 存储位置：/storage/emulated/0/DICM/path1/path2/new_photo_file.png
+     * String path = savaVideoToMediaStore("videp.mp4", "new video file descrition", "video/mp4");
+     */
+    public static String savaVideoToMediaStore(Context context,String videoPath,String name, String description, String mime) {
+        ContentValues values = new ContentValues();
+        values.put(MediaStore.Video.Media.DISPLAY_NAME, name);
+        values.put(MediaStore.Video.Media.MIME_TYPE, mime);
+        values.put(MediaStore.Video.Media.DESCRIPTION, description);
+        if (Build.VERSION.SDK_INT >= 29) {
+            values.put(MediaStore.Video.Media.RELATIVE_PATH,"Movies/VideoProcessor");
+        }
+        Uri url = null;
+        String stringUri = null;
+        ContentResolver cr = context.getContentResolver();
+        try {
+            url = cr.insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, values);
+            if (url == null) {
+                return null;
+            }
+            byte[] buffer = new byte[1024];
+            ParcelFileDescriptor descriptor = cr.openFileDescriptor(url, "w");
+            FileOutputStream outputStream = new FileOutputStream(descriptor.getFileDescriptor());
+            InputStream inputStream = new FileInputStream(videoPath);
+            while (true) {
+                int readSize = inputStream.read(buffer);
+                if (readSize == -1) {
+                    break;
+                }
+                outputStream.write(buffer, 0, readSize);
+            }
+            outputStream.flush();
+        } catch (Exception e) {
+            e.printStackTrace();
+            if (url != null) {
+                cr.delete(url, null, null);
+            }
+        }
+        if (url != null) {
+            stringUri = url.toString();
+        }
+        return stringUri;
     }
 }

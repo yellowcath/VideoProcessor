@@ -20,14 +20,17 @@ import android.provider.MediaStore;
 import android.support.v4.app.ActivityCompat;
 import android.support.v7.app.AppCompatActivity;
 import android.support.v7.widget.Toolbar;
+import android.util.Pair;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
+import android.view.ViewGroup;
 import android.widget.TextView;
 import android.widget.Toast;
 import android.widget.VideoView;
 import com.hw.videoprocessor.VideoEffects;
 import com.hw.videoprocessor.VideoProcessor;
+import com.hw.videoprocessor.VideoUtil;
 import com.hw.videoprocessor.util.CL;
 import com.jaygoo.widget.RangeSeekBar;
 
@@ -273,6 +276,18 @@ public class MainActivity extends AppCompatActivity {
         if (resultCode == RESULT_OK) {
             if (requestCode == REQUEST_TAKE_GALLERY_VIDEO) {
                 selectedVideoUri = data.getData();
+                ViewGroup.LayoutParams layoutParams = videoView.getLayoutParams();
+                try {
+                    Pair<Integer,Integer> size = VideoUtil.getVideoSize(new VideoProcessor.MediaSource(this,selectedVideoUri));
+                    layoutParams.height = getResources().getDimensionPixelSize(R.dimen.video_height);
+                    layoutParams.width = (int) (size.first * (layoutParams.height/(float)size.second));
+                } catch (IOException e) {
+                    e.printStackTrace();
+                    layoutParams.width = ViewGroup.LayoutParams.MATCH_PARENT;
+                    layoutParams.height = ViewGroup.LayoutParams.MATCH_PARENT;
+                }
+                videoView.setLayoutParams(layoutParams);
+
                 videoView.setVideoURI(selectedVideoUri);
                 videoView.start();
 
@@ -331,13 +346,9 @@ public class MainActivity extends AppCompatActivity {
 
     private void executeCutVideo(final int startMs, final int endMs) {
         progressDialog.show();
-        File moviesDir = Environment.getExternalStoragePublicDirectory(
-                Environment.DIRECTORY_MOVIES
-        );
-        moviesDir.mkdirs();
+        File moviesDir = getTempMovieDir();
         String filePrefix = "cut_video";
         String fileExtn = ".mp4";
-        final String selectVideoPath = getPath(MainActivity.this, selectedVideoUri);
         File dest = new File(moviesDir, filePrefix + fileExtn);
         int fileNo = 0;
         while (dest.exists()) {
@@ -346,20 +357,20 @@ public class MainActivity extends AppCompatActivity {
         }
         filePath = dest.getAbsolutePath();
 
-        MediaMetadataRetriever retriever = new MediaMetadataRetriever();
-        retriever.setDataSource(selectVideoPath);
 
         new Thread(new Runnable() {
             @Override
             public void run() {
+                boolean success = true;
                 try {
-                    VideoProcessor.cutVideo(getApplicationContext(), selectVideoPath, filePath, startMs, endMs);
-                    Intent intent = new Intent(MainActivity.this, PreviewActivity.class);
-                    intent.putExtra(FILEPATH, filePath);
-                    startActivity(intent);
+                    VideoProcessor.cutVideo(getApplicationContext(), selectedVideoUri, filePath, startMs, endMs);
                 } catch (Exception e) {
+                    success  = false;
                     e.printStackTrace();
                     postError();
+                }
+                if(success){
+                    startPreviewActivity(filePath);
                 }
                 progressDialog.dismiss();
             }
@@ -367,14 +378,10 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void executeScaleVideo(final int startMs, final int endMs) {
-        File moviesDir = Environment.getExternalStoragePublicDirectory(
-                Environment.DIRECTORY_MOVIES
-        );
-        moviesDir.mkdirs();
+        File moviesDir = getTempMovieDir();
         progressDialog.show();
         String filePrefix = "scale_video";
         String fileExtn = ".mp4";
-        final String selectVideoPath = getPath(MainActivity.this, selectedVideoUri);
         File dest = new File(moviesDir, filePrefix + fileExtn);
         int fileNo = 0;
         while (dest.exists()) {
@@ -383,15 +390,14 @@ public class MainActivity extends AppCompatActivity {
         }
         filePath = dest.getAbsolutePath();
 
-        MediaMetadataRetriever retriever = new MediaMetadataRetriever();
-        retriever.setDataSource(selectVideoPath);
 
         new Thread(new Runnable() {
             @Override
             public void run() {
+                boolean success = true;
                 try {
                     MediaMetadataRetriever retriever = new MediaMetadataRetriever();
-                    retriever.setDataSource(selectVideoPath);
+                    retriever.setDataSource(MainActivity.this,selectedVideoUri);
                     int originWidth = Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH));
                     int originHeight = Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT));
                     int bitrate = Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_BITRATE));
@@ -399,7 +405,7 @@ public class MainActivity extends AppCompatActivity {
                     int outWidth = originWidth / 2;
                     int outHeight = originHeight / 2;
                     VideoProcessor.processor(getApplicationContext())
-                            .input(selectVideoPath)
+                            .input(selectedVideoUri)
                             .output(filePath)
                             .outWidth(outWidth)
                             .outHeight(outHeight)
@@ -407,12 +413,13 @@ public class MainActivity extends AppCompatActivity {
                             .endTimeMs(endMs)
                             .bitrate(bitrate / 2)
                             .process();
-                    Intent intent = new Intent(MainActivity.this, PreviewActivity.class);
-                    intent.putExtra(FILEPATH, filePath);
-                    startActivity(intent);
                 } catch (Exception e) {
+                    success = false;
                     e.printStackTrace();
                     postError();
+                }
+                if(success){
+                    startPreviewActivity(filePath);
                 }
                 progressDialog.dismiss();
             }
@@ -420,14 +427,11 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void executeMixAudio(final int startMs, final int endMs) {
-        File moviesDir = Environment.getExternalStoragePublicDirectory(
-                Environment.DIRECTORY_MOVIES
-        );
-        moviesDir.mkdirs();
+        File moviesDir = getTempMovieDir();
         progressDialog.show();
         String filePrefix = "scale_video";
         String fileExtn = ".mp4";
-        final String selectVideoPath = getPath(MainActivity.this, selectedVideoUri);
+        final VideoProcessor.MediaSource selectVideo= new VideoProcessor.MediaSource(MainActivity.this,selectedVideoUri);
         File dest = new File(moviesDir, filePrefix + fileExtn);
         int fileNo = 0;
         while (dest.exists()) {
@@ -439,17 +443,19 @@ public class MainActivity extends AppCompatActivity {
         new Thread(new Runnable() {
             @Override
             public void run() {
+                boolean success = true;
                 try {
                     final String aacPath = new File(getCacheDir(), "test.aac").getAbsolutePath();
                     copyAssets("test.aac", aacPath);
-                    VideoProcessor.mixAudioTrack(getApplicationContext(), selectVideoPath, aacPath, filePath, startMs, endMs, 100, 100,
+                    VideoProcessor.mixAudioTrack(getApplicationContext(), selectVideo, new VideoProcessor.MediaSource(aacPath), filePath, startMs, endMs, 100, 100,
                             1, 1);
-                    Intent intent = new Intent(MainActivity.this, PreviewActivity.class);
-                    intent.putExtra(FILEPATH, filePath);
-                    startActivity(intent);
                 } catch (Exception e) {
+                    success = false;
                     e.printStackTrace();
                     postError();
+                }
+                if(success){
+                    startPreviewActivity(filePath);
                 }
                 progressDialog.dismiss();
             }
@@ -457,14 +463,10 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void executeKichikuVideo() {
-        File moviesDir = Environment.getExternalStoragePublicDirectory(
-                Environment.DIRECTORY_MOVIES
-        );
-        moviesDir.mkdirs();
+        File moviesDir = getTempMovieDir();
         progressDialog.show();
         String filePrefix = "kichiku_video";
         String fileExtn = ".mp4";
-        final String selectVideoPath = getPath(MainActivity.this, selectedVideoUri);
         File dest = new File(moviesDir, filePrefix + fileExtn);
         int fileNo = 0;
         while (dest.exists()) {
@@ -473,20 +475,19 @@ public class MainActivity extends AppCompatActivity {
         }
         filePath = dest.getAbsolutePath();
 
-        MediaMetadataRetriever retriever = new MediaMetadataRetriever();
-        retriever.setDataSource(selectVideoPath);
-
         new Thread(new Runnable() {
             @Override
             public void run() {
+                boolean success = true;
                 try {
-                    VideoEffects.doKichiku(getApplicationContext(), selectVideoPath, filePath, null, 2, 2000);
-                    Intent intent = new Intent(MainActivity.this, PreviewActivity.class);
-                    intent.putExtra(FILEPATH, filePath);
-                    startActivity(intent);
+                    VideoEffects.doKichiku(getApplicationContext(), new VideoProcessor.MediaSource(MainActivity.this,selectedVideoUri), filePath, null, 2, 2000);
                 } catch (Exception e) {
+                    success = false;
                     e.printStackTrace();
                     postError();
+                }
+                if(success){
+                    startPreviewActivity(filePath);
                 }
                 progressDialog.dismiss();
             }
@@ -494,14 +495,10 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void executeSpeedVideo(final int startMs, final int endMs, final float speed) {
-        File moviesDir = Environment.getExternalStoragePublicDirectory(
-                Environment.DIRECTORY_MOVIES
-        );
-        moviesDir.mkdirs();
+        File moviesDir =getTempMovieDir();
         progressDialog.show();
         String filePrefix = "speed_video";
         String fileExtn = ".mp4";
-        final String selectVideoPath = getPath(MainActivity.this, selectedVideoUri);
         File dest = new File(moviesDir, filePrefix + fileExtn);
         int fileNo = 0;
         while (dest.exists()) {
@@ -510,16 +507,14 @@ public class MainActivity extends AppCompatActivity {
         }
         filePath = dest.getAbsolutePath();
 
-        MediaMetadataRetriever retriever = new MediaMetadataRetriever();
-        retriever.setDataSource(selectVideoPath);
-
         new Thread(new Runnable() {
             @Override
             public void run() {
+                boolean success = true;
                 try {
                     long s = System.currentTimeMillis();
                     VideoProcessor.processor(getApplicationContext())
-                            .input(selectVideoPath)
+                            .input(selectedVideoUri)
                             .output(filePath)
                             .startTimeMs(startMs)
                             .endTimeMs(endMs)
@@ -528,12 +523,13 @@ public class MainActivity extends AppCompatActivity {
                             .process();
                     long e = System.currentTimeMillis();
                     CL.w("减速已完成，耗时:" + (e - s) / 1000f + "s");
-                    Intent intent = new Intent(MainActivity.this, PreviewActivity.class);
-                    intent.putExtra(FILEPATH, filePath);
-                    startActivity(intent);
                 } catch (Exception e) {
+                    success = false;
                     e.printStackTrace();
                     postError();
+                }
+                if(success){
+                    startPreviewActivity(filePath);
                 }
                 progressDialog.dismiss();
             }
@@ -541,14 +537,10 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void executeRevertVideo(final int startMs, final int endMs) {
-        File moviesDir = Environment.getExternalStoragePublicDirectory(
-                Environment.DIRECTORY_MOVIES
-        );
-        moviesDir.mkdirs();
+        File moviesDir = getTempMovieDir();
         progressDialog.show();
         String filePrefix = "revert_video";
         String fileExtn = ".mp4";
-        final String selectVideoPath = getPath(MainActivity.this, selectedVideoUri);
         File dest = new File(moviesDir, filePrefix + fileExtn);
         int fileNo = 0;
         while (dest.exists()) {
@@ -557,118 +549,49 @@ public class MainActivity extends AppCompatActivity {
         }
         filePath = dest.getAbsolutePath();
 
-        MediaMetadataRetriever retriever = new MediaMetadataRetriever();
-        retriever.setDataSource(selectVideoPath);
-
         new Thread(new Runnable() {
             @Override
             public void run() {
+                boolean success = true;
                 try {
-                    VideoProcessor.reverseVideo(getApplicationContext(), selectVideoPath, filePath,true,null);
-                    Intent intent = new Intent(MainActivity.this, PreviewActivity.class);
-                    intent.putExtra(FILEPATH, filePath);
-                    startActivity(intent);
+                    VideoProcessor.reverseVideo(getApplicationContext(),new VideoProcessor.MediaSource(MainActivity.this,selectedVideoUri), filePath,true,null);
                 } catch (Exception e) {
+                    success = false;
                     e.printStackTrace();
                     postError();
+                }
+                if(success){
+                    startPreviewActivity(filePath);
                 }
                 progressDialog.dismiss();
             }
         }).start();
     }
 
-    /**
-     * Get a file path from a Uri. This will get the the path for Storage Access
-     * Framework Documents, as well as the _data field for the MediaStore and
-     * other file-based ContentProviders.
-     */
-    private String getPath(final Context context, final Uri uri) {
-
-        final boolean isKitKat = Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT;
-
-        // DocumentProvider
-        if (isKitKat && DocumentsContract.isDocumentUri(context, uri)) {
-            // ExternalStorageProvider
-            if (isExternalStorageDocument(uri)) {
-                final String docId = DocumentsContract.getDocumentId(uri);
-                final String[] split = docId.split(":");
-                final String type = split[0];
-
-                if ("primary".equalsIgnoreCase(type)) {
-                    return Environment.getExternalStorageDirectory() + "/" + split[1];
-                }
-
-                // TODO handle non-primary volumes
-            }
-            // DownloadsProvider
-            else if (isDownloadsDocument(uri)) {
-
-                final String id = DocumentsContract.getDocumentId(uri);
-                final Uri contentUri = ContentUris.withAppendedId(
-                        Uri.parse("content://downloads/public_downloads"), Long.valueOf(id));
-
-                return getDataColumn(context, contentUri, null, null);
-            }
-            // MediaProvider
-            else if (isMediaDocument(uri)) {
-                final String docId = DocumentsContract.getDocumentId(uri);
-                final String[] split = docId.split(":");
-                final String type = split[0];
-
-                Uri contentUri = null;
-                if ("image".equals(type)) {
-                    contentUri = MediaStore.Images.Media.EXTERNAL_CONTENT_URI;
-                } else if ("video".equals(type)) {
-                    contentUri = MediaStore.Video.Media.EXTERNAL_CONTENT_URI;
-                } else if ("audio".equals(type)) {
-                    contentUri = MediaStore.Audio.Media.EXTERNAL_CONTENT_URI;
-                }
-
-                final String selection = "_id=?";
-                final String[] selectionArgs = new String[]{
-                        split[1]
-                };
-
-                return getDataColumn(context, contentUri, selection, selectionArgs);
-            }
+    private void startPreviewActivity(String videoPath){
+        String name = new File(videoPath).getName();
+        int end = name.lastIndexOf('.');
+        if(end>0){
+            name = name.substring(0,end);
         }
-        // MediaStore (and general)
-        else if ("content".equalsIgnoreCase(uri.getScheme())) {
-            return getDataColumn(context, uri, null, null);
-        }
-        // File
-        else if ("file".equalsIgnoreCase(uri.getScheme())) {
-            return uri.getPath();
-        }
-
-        return null;
+        String strUri = VideoUtil.savaVideoToMediaStore(this, videoPath, name, "From VideoProcessor", "video/mp4");
+        Uri uri = Uri.parse(strUri);
+        Intent intent = new Intent(this,PreviewActivity.class);
+        intent.putExtra(PreviewActivity.KEY_URI,uri);
+        startActivity(intent);
     }
 
-    /**
-     * Get the value of the data column for this Uri.
-     */
-    private String getDataColumn(Context context, Uri uri, String selection,
-                                 String[] selectionArgs) {
+    private File getTempMovieDir(){
+        File movie = new File(getCacheDir(), "movie");
+        movie.mkdirs();
+        return movie;
+    }
 
-        Cursor cursor = null;
-        final String column = "_data";
-        final String[] projection = {
-                column
-        };
-
-        try {
-            cursor = context.getContentResolver().query(uri, projection, selection, selectionArgs,
-                    null);
-            if (cursor != null && cursor.moveToFirst()) {
-                final int column_index = cursor.getColumnIndexOrThrow(column);
-                return cursor.getString(column_index);
-            }
-        } finally {
-            if (cursor != null) {
-                cursor.close();
-            }
-        }
-        return null;
+    private void copyAssets(String assetsName, String path) throws IOException {
+        AssetFileDescriptor assetFileDescriptor = getAssets().openFd(assetsName);
+        FileChannel from = new FileInputStream(assetFileDescriptor.getFileDescriptor()).getChannel();
+        FileChannel to = new FileOutputStream(path).getChannel();
+        from.transferTo(assetFileDescriptor.getStartOffset(), assetFileDescriptor.getLength(), to);
     }
 
     private void postError() {
@@ -678,36 +601,5 @@ public class MainActivity extends AppCompatActivity {
                 Toast.makeText(getApplicationContext(), "process error!", Toast.LENGTH_SHORT).show();
             }
         });
-    }
-
-    /**
-     * @param uri The Uri to check.
-     * @return Whether the Uri authority is ExternalStorageProvider.
-     */
-    private boolean isExternalStorageDocument(Uri uri) {
-        return "com.android.externalstorage.documents".equals(uri.getAuthority());
-    }
-
-    /**
-     * @param uri The Uri to check.
-     * @return Whether the Uri authority is DownloadsProvider.
-     */
-    private boolean isDownloadsDocument(Uri uri) {
-        return "com.android.providers.downloads.documents".equals(uri.getAuthority());
-    }
-
-    /**
-     * @param uri The Uri to check.
-     * @return Whether the Uri authority is MediaProvider.
-     */
-    private boolean isMediaDocument(Uri uri) {
-        return "com.android.providers.media.documents".equals(uri.getAuthority());
-    }
-
-    private void copyAssets(String assetsName, String path) throws IOException {
-        AssetFileDescriptor assetFileDescriptor = getAssets().openFd(assetsName);
-        FileChannel from = new FileInputStream(assetFileDescriptor.getFileDescriptor()).getChannel();
-        FileChannel to = new FileOutputStream(path).getChannel();
-        from.transferTo(assetFileDescriptor.getStartOffset(), assetFileDescriptor.getLength(), to);
     }
 }

@@ -19,13 +19,13 @@ public class VideoEffects {
     /**
      * 鬼畜效果，先按speed倍率对视频进行加速，然后按splitTimeMs分割视频，并对每一个片段做正放+倒放
      */
-    public static void doKichiku(Context context, String inputVideo, String outputVideo, @Nullable Integer outBitrate, float speed, int splitTimeMs) throws Exception {
+    public static void doKichiku(Context context, VideoProcessor.MediaSource inputVideo, String outputVideo, @Nullable Integer outBitrate, float speed, int splitTimeMs) throws Exception {
         long s = System.currentTimeMillis();
         File cacheDir = new File(context.getCacheDir(), "kichiku_" + System.currentTimeMillis());
         cacheDir.mkdir();
         if (outBitrate == null) {
             MediaMetadataRetriever retriever = new MediaMetadataRetriever();
-            retriever.setDataSource(inputVideo);
+            inputVideo.setDataSource(retriever);
             outBitrate = Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_BITRATE));
             retriever.release();
         }

@@ -3,8 +3,7 @@ apply plugin: 'com.github.dcendents.android-maven'
 group = 'yellowcath'
 
 android {
-    compileSdkVersion 26
-
+    compileSdkVersion 29
 
 
     defaultConfig {

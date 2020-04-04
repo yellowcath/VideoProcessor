@@ -16,21 +16,28 @@
     <RelativeLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content">
-        <VideoView
-            android:id="@+id/videoView"
-            android:layout_width="match_parent"
-            android:layout_height="200dp"
+        <FrameLayout
+            android:id="@+id/videoLayout"
             android:layout_centerHorizontal="true"
             android:layout_marginLeft="20dp"
             android:layout_marginRight="20dp"
-            android:layout_marginTop="5dp" />
+            android:layout_marginTop="5dp"
+            android:background="#000000"
+            android:layout_width="match_parent"
+            android:layout_height="@dimen/video_height">
+            <VideoView
+                android:id="@+id/videoView"
+                android:layout_gravity="center"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent" />
 
+        </FrameLayout>
 
         <com.jaygoo.widget.RangeSeekBar
             android:id="@+id/rangeSeekBar"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_below="@+id/videoView"
+            android:layout_below="@+id/videoLayout"
             android:layout_marginTop="5dp"
             app:lineColorSelected="#ED1C24"
             app:thumbSize="20dp"
@@ -146,7 +153,7 @@
                     android:layout_weight="1"
                     android:background="@drawable/slow_video_selector"
                     android:gravity="center"
-                    android:padding="2dp"
+                    android:padding="10dp"
                     android:text="decrease"
                     android:textColor="#FFFFFF"
                     android:textSize="16sp" />
@@ -157,7 +164,7 @@
                     android:layout_weight="1"
                     android:background="@drawable/reverse_video_selector"
                     android:gravity="center"
-                    android:padding="2dp"
+                    android:padding="10dp"
                     android:text="reverse"
                     android:textColor="#FFFFFF"
                     android:textSize="16sp" />

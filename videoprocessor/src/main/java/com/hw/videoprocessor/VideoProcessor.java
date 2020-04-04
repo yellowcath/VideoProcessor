@@ -9,6 +9,8 @@ import android.media.MediaExtractor;
 import android.media.MediaFormat;
 import android.media.MediaMetadataRetriever;
 import android.media.MediaMuxer;
+import android.media.MediaRecorder;
+import android.net.Uri;
 import android.util.Pair;
 import com.hw.videoprocessor.util.AudioFadeUtil;
 import com.hw.videoprocessor.util.AudioUtil;
@@ -54,7 +56,7 @@ public class VideoProcessor {
     final static int TIMEOUT_USEC = 2500;
 
 
-    public static void scaleVideo(Context context, String input, String output,
+    public static void scaleVideo(Context context, Uri input, String output,
                                   int outWidth, int outHeight) throws Exception {
         processor(context)
                 .input(input)
@@ -64,7 +66,7 @@ public class VideoProcessor {
                 .process();
     }
 
-    public static void cutVideo(Context context, String input, String output, int startTimeMs, int endTimeMs) throws Exception {
+    public static void cutVideo(Context context, Uri input, String output, int startTimeMs, int endTimeMs) throws Exception {
         processor(context)
                 .input(input)
                 .output(output)
@@ -73,7 +75,7 @@ public class VideoProcessor {
                 .process();
     }
 
-    public static void changeVideoSpeed(Context context, String input, String output, float speed) throws Exception {
+    public static void changeVideoSpeed(Context context, Uri input, String output, float speed) throws Exception {
         processor(context)
                 .input(input)
                 .output(output)
@@ -85,12 +87,12 @@ public class VideoProcessor {
     /**
      * 对视频先检查，如果不是全关键帧，先处理成所有帧都是关键帧，再逆序
      */
-    public static void reverseVideo(Context context, String input, String output, boolean reverseAudio, @Nullable VideoProgressListener listener) throws Exception {
+    public static void reverseVideo(Context context, MediaSource input, String output, boolean reverseAudio, @Nullable VideoProgressListener listener) throws Exception {
         File tempFile = new File(context.getCacheDir(), System.currentTimeMillis() + ".temp");
         File temp2File = new File(context.getCacheDir(), System.currentTimeMillis() + ".temp2");
         try {
             MediaExtractor extractor = new MediaExtractor();
-            extractor.setDataSource(input);
+            input.setDataSource(extractor);
             int trackIndex = VideoUtil.selectTrack(extractor, false);
             extractor.selectTrack(trackIndex);
             int keyFrameCount = 0;
@@ -118,7 +120,7 @@ public class VideoProcessor {
                 stepProgress.setCurrentStep(0);
                 float bitrateMultiple = (frameCount - keyFrameCount) / (float) keyFrameCount + 1;
                 MediaMetadataRetriever retriever = new MediaMetadataRetriever();
-                retriever.setDataSource(input);
+                input.setDataSource(retriever);
                 int oriBitrate = Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_BITRATE));
                 int duration = Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION));
                 try {
@@ -141,7 +143,7 @@ public class VideoProcessor {
                             .process();
                 }
                 stepProgress.setCurrentStep(1);
-                reverseVideoNoDecode(tempFile.getAbsolutePath(), temp2File.getAbsolutePath(), reverseAudio, null, stepProgress);
+                reverseVideoNoDecode(new MediaSource(tempFile.getAbsolutePath()), temp2File.getAbsolutePath(), reverseAudio, null, stepProgress);
                 int oriIFrameInterval = (int) (keyFrameCount / (duration / 1000f));
                 oriIFrameInterval = oriIFrameInterval == 0 ? 1 : oriIFrameInterval;
                 stepProgress.setCurrentStep(2);
@@ -165,7 +167,7 @@ public class VideoProcessor {
     public static void processVideo(@NotNull Context context, @NotNull Processor processor) throws Exception {
 
         MediaMetadataRetriever retriever = new MediaMetadataRetriever();
-        retriever.setDataSource(processor.input);
+        processor.input.setDataSource(retriever);
         int originWidth = Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH));
         int originHeight = Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT));
         int rotationValue = Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION));
@@ -191,7 +193,7 @@ public class VideoProcessor {
         }
 
         MediaExtractor extractor = new MediaExtractor();
-        extractor.setDataSource(processor.input);
+        processor.input.setDataSource(extractor);
         int videoIndex = VideoUtil.selectTrack(extractor, false);
         int audioIndex = VideoUtil.selectTrack(extractor, true);
         MediaMuxer mediaMuxer = new MediaMuxer(processor.output, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4);
@@ -303,21 +305,21 @@ public class VideoProcessor {
         }
     }
 
-    public static void reverseVideoNoDecode(String input, String output, boolean reverseAudio) throws IOException {
+    public static void reverseVideoNoDecode(MediaSource input, String output, boolean reverseAudio) throws IOException {
         reverseVideoNoDecode(input, output, reverseAudio, null, null);
     }
 
     /**
      * 直接对视频进行逆序,用于所有帧都是关键帧的情况
      */
-    public static void reverseVideoNoDecode(String input, String output, boolean reverseAudio, List<Long> videoFrameTimeStamps, @Nullable VideoProgressListener listener) throws IOException {
+    public static void reverseVideoNoDecode(MediaSource input, String output, boolean reverseAudio, List<Long> videoFrameTimeStamps, @Nullable VideoProgressListener listener) throws IOException {
         MediaMetadataRetriever retriever = new MediaMetadataRetriever();
-        retriever.setDataSource(input);
+        input.setDataSource(retriever);
         int durationMs = Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION));
         retriever.release();
 
         MediaExtractor extractor = new MediaExtractor();
-        extractor.setDataSource(input);
+        input.setDataSource(extractor);
 
         int videoTrackIndex = VideoUtil.selectTrack(extractor, false);
         int audioTrackIndex = VideoUtil.selectTrack(extractor, true);
@@ -461,20 +463,20 @@ public class VideoProcessor {
      *
      * @param videoVolume 0静音，100表示原音
      */
-    public static void adjustVideoVolume(Context context, final String videoInput, final String output,int videoVolume, float faceInSec, float fadeOutSec) throws IOException {
+    public static void adjustVideoVolume(Context context, final MediaSource mediaSource, final String output, int videoVolume, float faceInSec, float fadeOutSec) throws IOException {
         if (videoVolume == 100 && faceInSec == 0f && fadeOutSec == 0f) {
-            AudioUtil.copyFile(videoInput, output);
+            AudioUtil.copyFile(mediaSource, output);
             return;
         }
         File cacheDir = new File(context.getCacheDir(), "pcm");
         cacheDir.mkdir();
 
         MediaExtractor oriExtrator = new MediaExtractor();
-        oriExtrator.setDataSource(videoInput);
+        mediaSource.setDataSource(oriExtrator);
         int oriAudioIndex = VideoUtil.selectTrack(oriExtrator, true);
         if (oriAudioIndex < 0) {
             CL.e("no audio stream!");
-            AudioUtil.copyFile(videoInput, output);
+            AudioUtil.copyFile(mediaSource, output);
             return;
         }
         long time = System.currentTimeMillis();
@@ -482,7 +484,7 @@ public class VideoProcessor {
         final File videoPcmAdjustedFile = new File(cacheDir, "video_" + time + "_adjust.pcm");
         final File videoWavFile = new File(cacheDir, "video_" + time + ".wav");
 
-        AudioUtil.decodeToPCM(videoInput, videoPcmFile.getAbsolutePath(), null, null);
+        AudioUtil.decodeToPCM(mediaSource, videoPcmFile.getAbsolutePath(), null, null);
         AudioUtil.adjustPcmVolume(videoPcmFile.getAbsolutePath(), videoPcmAdjustedFile.getAbsolutePath(), videoVolume);
 
         MediaFormat audioTrackFormat = oriExtrator.getTrackFormat(oriAudioIndex);
@@ -599,7 +601,7 @@ public class VideoProcessor {
             oriExtrator.selectTrack(oriVideoIndex);
             oriExtrator.seekTo(0, MediaExtractor.SEEK_TO_PREVIOUS_SYNC);
             maxBufferSize = oriVideoFormat.getInteger(MediaFormat.KEY_MAX_INPUT_SIZE);
-            int frameRate = oriVideoFormat.containsKey(MediaFormat.KEY_FRAME_RATE) ? oriVideoFormat.getInteger(MediaFormat.KEY_FRAME_RATE) : (int) Math.ceil(VideoUtil.getAveFrameRate(videoInput));
+            int frameRate = oriVideoFormat.containsKey(MediaFormat.KEY_FRAME_RATE) ? oriVideoFormat.getInteger(MediaFormat.KEY_FRAME_RATE) : (int) Math.ceil(VideoUtil.getAveFrameRate(mediaSource));
             buffer = ByteBuffer.allocateDirect(maxBufferSize);
             final int VIDEO_FRAME_TIME_US = (int) (1000 * 1000f / frameRate);
             long lastVideoFrameTimeUs = -1;
@@ -658,7 +660,7 @@ public class VideoProcessor {
      * @param videoVolume 0静音，100表示原音
      * @param aacVolume   0静音，100表示原音
      */
-    public static void mixAudioTrack(Context context, final String videoInput, final String audioInput, final String output,
+    public static void mixAudioTrack(Context context, final MediaSource videoInput, final MediaSource audioInput, final String output,
                                      Integer startTimeMs, Integer endTimeMs,
                                      int videoVolume,
                                      int aacVolume,
@@ -674,21 +676,21 @@ public class VideoProcessor {
         final int videoDurationMs;
         if (endTimeUs == null) {
             MediaMetadataRetriever retriever = new MediaMetadataRetriever();
-            retriever.setDataSource(videoInput);
+            videoInput.setDataSource(retriever);
             videoDurationMs = Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION));
         } else {
             videoDurationMs = (endTimeUs - startTimeUs) / 1000;
         }
         MediaMetadataRetriever retriever = new MediaMetadataRetriever();
-        retriever.setDataSource(audioInput);
+        audioInput.setDataSource(retriever);
         final int aacDurationMs = Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION));
         retriever.release();
 
         MediaExtractor oriExtrator = new MediaExtractor();
-        oriExtrator.setDataSource(videoInput);
+        videoInput.setDataSource(oriExtrator);
         int oriAudioIndex = VideoUtil.selectTrack(oriExtrator, true);
         MediaExtractor audioExtractor = new MediaExtractor();
-        audioExtractor.setDataSource(audioInput);
+        audioInput.setDataSource(audioExtractor);
         int aacAudioIndex = VideoUtil.selectTrack(audioExtractor, true);
         File wavFile;
         int sampleRate;
@@ -991,7 +993,7 @@ public class VideoProcessor {
 
     public static class Processor {
         private Context context;
-        private String input;
+        private MediaSource input;
         private String output;
         @Nullable
         private Integer outWidth;
@@ -1022,8 +1024,17 @@ public class VideoProcessor {
             this.context = context;
         }
 
-        public Processor input(String input) {
+        public Processor input(MediaSource input) {
             this.input = input;
+            return this;
+        }
+        public Processor input(Uri input) {
+            this.input = new MediaSource(context,input);
+            return this;
+        }
+
+        public Processor input(String input) {
+            this.input = new MediaSource(input);
             return this;
         }
 
@@ -1092,6 +1103,37 @@ public class VideoProcessor {
 
         public void process() throws Exception {
             processVideo(context, this);
+        }
+    }
+
+    public static class MediaSource {
+        public Context context;
+        public String inputPath;
+        public Uri inputUri;
+
+        public MediaSource(String inputPath) {
+            this.inputPath = inputPath;
+        }
+
+        public MediaSource(Context context, Uri inputUri) {
+            this.context = context;
+            this.inputUri = inputUri;
+        }
+
+        public void setDataSource(MediaMetadataRetriever retriever){
+            if(inputPath!=null){
+                retriever.setDataSource(inputPath);
+            }else{
+                retriever.setDataSource(context,inputUri);
+            }
+        }
+
+        public void setDataSource(MediaExtractor extractor) throws IOException {
+            if(inputPath!=null){
+                extractor.setDataSource(inputPath);
+            }else{
+                extractor.setDataSource(context,inputUri,null);
+            }
         }
     }
 }

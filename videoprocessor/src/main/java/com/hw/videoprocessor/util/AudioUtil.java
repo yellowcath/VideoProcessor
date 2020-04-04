@@ -7,6 +7,7 @@ import android.media.MediaCodecInfo;
 import android.media.MediaExtractor;
 import android.media.MediaFormat;
 import android.media.MediaMuxer;
+import android.os.ParcelFileDescriptor;
 import android.util.Pair;
 import com.hw.videoprocessor.VideoProcessor;
 import com.hw.videoprocessor.VideoUtil;
@@ -17,9 +18,11 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.File;
+import java.io.FileDescriptor;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
@@ -98,17 +101,17 @@ public class AudioUtil {
      * @param volume [0,100]
      * @throws IOException
      */
-    public static void adjustAacVolume(Context context, String aacPath, String outPath,int volume
+    public static void adjustAacVolume(Context context, VideoProcessor.MediaSource aacSource, String outPath, int volume
             , @Nullable VideoProgressListener listener) throws IOException {
-        String name = new File(aacPath).getName();
+        String name = "temp_aac_"+System.currentTimeMillis();
         File pcmFile = new File(VideoUtil.getVideoCacheDir(context), name + ".pcm");
         File pcmFile2 = new File(VideoUtil.getVideoCacheDir(context), name + "_2.pcm");
         File wavFile = new File(VideoUtil.getVideoCacheDir(context), name + ".wav");
 
-        AudioUtil.decodeToPCM(aacPath, pcmFile.getAbsolutePath(), null, null);
+        AudioUtil.decodeToPCM(aacSource, pcmFile.getAbsolutePath(), null, null);
         AudioUtil.adjustPcmVolume(pcmFile.getAbsolutePath(), pcmFile2.getAbsolutePath(), volume);
         MediaExtractor extractor = new MediaExtractor();
-        extractor.setDataSource(aacPath);
+        aacSource.setDataSource(extractor);
         int trackIndex = VideoUtil.selectTrack(extractor, true);
         MediaFormat aacFormat = extractor.getTrackFormat(trackIndex);
         int sampleRate = aacFormat.getInteger(MediaFormat.KEY_SAMPLE_RATE);
@@ -211,6 +214,18 @@ public class AudioUtil {
         os.close();
     }
 
+
+    public static void copyFile(VideoProcessor.MediaSource from, String to) throws IOException {
+        if(from.inputPath!=null){
+            copyFile(from.inputPath,to);
+            return;
+        }
+        ParcelFileDescriptor fileDescriptor = from.context.getContentResolver().openFileDescriptor(from.inputUri,"rw");
+        FileChannel toChannel = new FileOutputStream(to).getChannel();
+
+        FileChannel fromChannel = new FileInputStream(fileDescriptor.getFileDescriptor()).getChannel();
+        fromChannel.transferTo(0, fromChannel.size(), toChannel);
+    }
 
     public static void copyFile(String from, String to) throws IOException {
         FileChannel toChannel = new FileOutputStream(to).getChannel();
@@ -360,9 +375,9 @@ public class AudioUtil {
     /**
      * 需要改变音频速率的情况下，需要先解码->改变速率->编码
      */
-    public static void decodeToPCM(String audioPath, String outPath, Integer startTimeUs, Integer endTimeUs) throws IOException {
+    public static void decodeToPCM(VideoProcessor.MediaSource audioSource, String outPath, Integer startTimeUs, Integer endTimeUs) throws IOException {
         MediaExtractor extractor = new MediaExtractor();
-        extractor.setDataSource(audioPath);
+        audioSource.setDataSource(extractor);
         int audioTrack = VideoUtil.selectTrack(extractor, true);
         extractor.selectTrack(audioTrack);
         if (startTimeUs == null) {

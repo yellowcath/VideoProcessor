@@ -186,6 +186,7 @@ public class VideoEncodeThread extends Thread implements IVideoEncodeThread {
                 }
             }
         }
+        CL.i("Video Encode Done!");
     }
 
     private void notifyProgress(MediaCodec.BufferInfo info) {
