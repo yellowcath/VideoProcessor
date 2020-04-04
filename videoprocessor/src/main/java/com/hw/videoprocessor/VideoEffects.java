@@ -3,8 +3,9 @@ package com.hw.videoprocessor;
 import android.content.Context;
 import android.media.MediaCodec;
 import android.media.MediaMetadataRetriever;
-import android.support.annotation.Nullable;
 import com.hw.videoprocessor.util.CL;
+
+import org.jetbrains.annotations.Nullable;
 
 import java.io.File;
 import java.util.List;

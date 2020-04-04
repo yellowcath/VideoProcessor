@@ -3,12 +3,13 @@ package com.hw.videoprocessor;
 import android.media.MediaCodec;
 import android.media.MediaExtractor;
 import android.media.MediaFormat;
-import android.support.annotation.Nullable;
 import android.view.Surface;
 import com.hw.videoprocessor.util.CL;
 import com.hw.videoprocessor.util.FrameDropper;
 import com.hw.videoprocessor.util.InputSurface;
 import com.hw.videoprocessor.util.OutputSurface;
+
+import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;

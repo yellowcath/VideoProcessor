@@ -9,9 +9,6 @@ import android.media.MediaExtractor;
 import android.media.MediaFormat;
 import android.media.MediaMetadataRetriever;
 import android.media.MediaMuxer;
-import android.support.annotation.IntRange;
-import android.support.annotation.NonNull;
-import android.support.annotation.Nullable;
 import android.util.Pair;
 import com.hw.videoprocessor.util.AudioFadeUtil;
 import com.hw.videoprocessor.util.AudioUtil;
@@ -20,6 +17,9 @@ import com.hw.videoprocessor.util.PcmToWavUtil;
 import com.hw.videoprocessor.util.VideoMultiStepProgress;
 import com.hw.videoprocessor.util.VideoProgressAve;
 import com.hw.videoprocessor.util.VideoProgressListener;
+
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.io.File;
 import java.io.IOException;
@@ -162,7 +162,7 @@ public class VideoProcessor {
     /**
      * 支持裁剪缩放快慢放
      */
-    public static void processVideo(@NonNull Context context, @NonNull Processor processor) throws Exception {
+    public static void processVideo(@NotNull Context context, @NotNull Processor processor) throws Exception {
 
         MediaMetadataRetriever retriever = new MediaMetadataRetriever();
         retriever.setDataSource(processor.input);
@@ -461,8 +461,7 @@ public class VideoProcessor {
      *
      * @param videoVolume 0静音，100表示原音
      */
-    public static void adjustVideoVolume(Context context, final String videoInput, final String output,
-                                         @IntRange(from = 0, to = 100) int videoVolume, float faceInSec, float fadeOutSec) throws IOException {
+    public static void adjustVideoVolume(Context context, final String videoInput, final String output,int videoVolume, float faceInSec, float fadeOutSec) throws IOException {
         if (videoVolume == 100 && faceInSec == 0f && fadeOutSec == 0f) {
             AudioUtil.copyFile(videoInput, output);
             return;
@@ -661,8 +660,8 @@ public class VideoProcessor {
      */
     public static void mixAudioTrack(Context context, final String videoInput, final String audioInput, final String output,
                                      Integer startTimeMs, Integer endTimeMs,
-                                     @IntRange(from = 0, to = 100) int videoVolume,
-                                     @IntRange(from = 0, to = 100) int aacVolume,
+                                     int videoVolume,
+                                     int aacVolume,
                                      float fadeInSec, float fadeOutSec) throws IOException {
         File cacheDir = new File(context.getCacheDir(), "pcm");
         cacheDir.mkdir();

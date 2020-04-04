@@ -7,14 +7,14 @@ import android.media.MediaCodecInfo;
 import android.media.MediaExtractor;
 import android.media.MediaFormat;
 import android.media.MediaMuxer;
-import android.support.annotation.IntRange;
-import android.support.annotation.NonNull;
-import android.support.annotation.Nullable;
 import android.util.Pair;
 import com.hw.videoprocessor.VideoProcessor;
 import com.hw.videoprocessor.VideoUtil;
 import com.hw.videoprocessor.jssrc.SSRC;
 import net.surina.soundtouch.SoundTouch;
+
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -52,7 +52,14 @@ public class AudioUtil {
     final static String TAG = "VideoProcessor";
     public static int VOLUMN_MAX_RATIO = 1;
 
-    public static void adjustPcmVolume(String fromPath, String toPath, @IntRange(from = 0, to = 100) int volume) throws IOException {
+    /**
+     *
+     * @param fromPath
+     * @param toPath
+     * @param volume IntRange [0,100]
+     * @throws IOException
+     */
+    public static void adjustPcmVolume(String fromPath, String toPath, int volume) throws IOException {
         if (volume == 100) {
             copyFile(fromPath, toPath);
             return;
@@ -88,9 +95,10 @@ public class AudioUtil {
     /**
      * 调整aac音量
      *
+     * @param volume [0,100]
      * @throws IOException
      */
-    public static void adjustAacVolume(Context context, String aacPath, String outPath, @IntRange(from = 0, to = 100) int volume
+    public static void adjustAacVolume(Context context, String aacPath, String outPath,int volume
             , @Nullable VideoProgressListener listener) throws IOException {
         String name = new File(aacPath).getName();
         File pcmFile = new File(VideoUtil.getVideoCacheDir(context), name + ".pcm");
@@ -114,16 +122,21 @@ public class AudioUtil {
     }
 
     /**
-     * @param volume
+     * @param volume [0,100]
      * @return 0~100 -> 0~1
      */
-    private static float normalizeVolume(@IntRange(from = 0, to = 100) int volume) {
+    private static float normalizeVolume(int volume) {
         return volume / 100f * VOLUMN_MAX_RATIO;
     }
 
+    /**
+     *
+     * @param volume1 [0,100]
+     * @param volume2 [0,100]
+     * @throws IOException
+     */
     public static void mixPcm(String pcm1Path, String pcm2Path, String toPath
-            , @IntRange(from = 0, to = 100) int volume1
-            , @IntRange(from = 0, to = 100) int volume2) throws IOException {
+            , int volume1, int volume2) throws IOException {
         float vol1 = normalizeVolume(volume1);
         float vol2 = normalizeVolume(volume2);
 
@@ -178,10 +191,10 @@ public class AudioUtil {
      *
      * @param from
      * @param to
-     * @param srcChannelCount
+     * @param srcChannelCount @IntRange(from = 2)
      * @throws IOException
      */
-    public static void stereoToMonoSimple(String from, String to, @IntRange(from = 2) int srcChannelCount) throws IOException {
+    public static void stereoToMonoSimple(String from, String to,  int srcChannelCount) throws IOException {
         FileInputStream is = new FileInputStream(from);
         FileOutputStream os = new FileOutputStream(to);
         byte[] buffer1 = new byte[1024 * srcChannelCount];
@@ -658,7 +671,7 @@ public class AudioUtil {
      */
     public static void writeAudioTrackDecode(Context context, MediaExtractor extractor, MediaMuxer mediaMuxer, int muxerAudioTrackIndex,
                                              Integer startTimeUs, Integer endTimeUs,
-                                             @NonNull Float speed, @Nullable VideoProgressListener listener) throws Exception {
+                                             @NotNull Float speed, @Nullable VideoProgressListener listener) throws Exception {
         int audioTrack = VideoUtil.selectTrack(extractor, true);
         extractor.selectTrack(audioTrack);
         if (startTimeUs == null) {
