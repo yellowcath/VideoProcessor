@@ -26,11 +26,15 @@ allprojects {
 ``` groovy
 
 	dependencies {
-	        implementation 'com.github.yellowcath:VideoProcessor:2.4.0'
+	        implementation 'com.github.yellowcath:VideoProcessor:2.4.1'
 	}
 ```
 
 ## Changelog
+
+2.4.1
+* 解决arm64的机器上crash的问题
+
 2.4.0
 * 兼容Android Q
 * 去掉对support lib的依赖
