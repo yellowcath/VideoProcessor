@@ -23,7 +23,7 @@ public class VideoProgressAve {
         if(mSpeed!=null){
             timeStampUs = (long) (timeStampUs*mSpeed);
         }
-        mEncodeProgress = (timeStampUs/1000f - mStartTimeMs)/(mEndTimeMs - mStartTimeMs);
+        mEncodeProgress = (timeStampUs/1000f)/(mEndTimeMs - mStartTimeMs);
         mEncodeProgress = mEncodeProgress <0?0:mEncodeProgress;
         mEncodeProgress = mEncodeProgress>1?1:mEncodeProgress;
         mListener.onProgress((mEncodeProgress + mAudioProgress) / 2);
