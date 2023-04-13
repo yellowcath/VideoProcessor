@@ -134,9 +134,9 @@ public class VideoEncodeThread extends Thread implements IVideoEncodeThread {
             CL.i("encode outputBufferIndex = " + outputBufferIndex);
             if (signalEncodeEnd && outputBufferIndex == MediaCodec.INFO_TRY_AGAIN_LATER) {
                 encodeTryAgainCount++;
-                if (encodeTryAgainCount > 10) {
+                if (encodeTryAgainCount > 20) {
                     //三星S8上出现signalEndOfInputStream之后一直tryAgain的问题
-                    CL.e("INFO_TRY_AGAIN_LATER 10 times,force End!");
+                    CL.e("INFO_TRY_AGAIN_LATER 20 times,force End!");
                     break;
                 }
             } else {
